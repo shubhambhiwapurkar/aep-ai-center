@@ -1,6 +1,8 @@
 import fetch from 'node-fetch';
 import { config } from '../config/config.js';
 import { getAccessToken } from './auth.service.js';
+import * as datasetService from './dataset.service.js';
+import * as queryService from './query.service.js';
 
 async function aepFetch(endpoint, options = {}) {
     const token = await getAccessToken();
@@ -270,4 +272,39 @@ export async function getProfileStats() {
             error: error.message
         };
     }
+}
+
+/**
+ * Check for orphaned profiles (inactive > N months)
+ */
+export async function checkOrphanedProfiles(monthsInactive = 3) {
+    // 1. Find Snapshot Logic
+    const datasets = await datasetService.listDatasets({ name: 'Profile Snapshot Export', limit: '1' });
+    const snapshotId = Object.keys(datasets || {})[0];
+
+    if (!snapshotId) {
+        throw new Error('Profile Snapshot dataset not found. Cannot run analysis.');
+    }
+
+    const tableName = snapshotId;
+    const days = monthsInactive * 30;
+
+    // 2. SQL
+    const sql = `SELECT count(1) as orphan_count FROM "${tableName}" WHERE timestamp < date_sub(current_date(), ${days})`;
+
+    // 3. Execute
+    const queryRun = await queryService.createQuery({
+        dbName: 'prod:all',
+        sql: sql,
+        name: `API: Orphan Check (> ${days} days)`
+    });
+
+    return {
+        analysis: 'Orphaned Profile Check',
+        thresholdDays: days,
+        status: 'Query Submitted',
+        queryId: queryRun.id,
+        sql: sql,
+        note: 'Check results in Query Service to see the count of inactive profiles.'
+    };
 }

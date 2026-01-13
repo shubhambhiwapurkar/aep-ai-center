@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import {
-    getProfileByIdentity, getMergePolicies, getProfileDistribution,
-    getMergePolicyDetails, getExperienceEvents, getProfilesByDataset
+    getProfileByIdentity, getMergePolicies, getProfileStats,
+    getMergePolicyDetails, getExperienceEvents, getProfilesByDataset,
+    checkOrphanedProfiles
 } from '../services/api';
 import {
     JSONViewer, TabPanel, DetailField, StatusBadge,
@@ -26,6 +27,8 @@ export default function Profiles() {
 
     // Distribution State
     const [distribution, setDistribution] = useState(null);
+    const [orphanCheck, setOrphanCheck] = useState(null);
+    const [checkingOrphans, setCheckingOrphans] = useState(false);
 
     useEffect(() => {
         loadInitialData();
@@ -33,18 +36,20 @@ export default function Profiles() {
 
     const loadInitialData = async () => {
         try {
-            const [policies, dist] = await Promise.all([
+            const [policies, profileStats] = await Promise.all([
                 getMergePolicies().catch(() => ({ results: [] })),
-                getProfileDistribution().catch(() => null)
+                getProfileStats().catch(() => null)
             ]);
-            setMergePolicies(policies?.results || policies?.children || []);
-            setDistribution(dist);
 
-            // Calculate stats
+            const policiesList = policies?.results || policies?.children || [];
+            setMergePolicies(policiesList);
+
+            // Calculate stats from profile stats API
             setStats({
-                totalProfiles: dist?.profileCount || 0,
-                mergePolicies: (policies?.results || policies?.children || []).length,
-                datasets: dist?.datasetCount || 0
+                totalProfiles: profileStats?.count || profileStats?.totalProfiles || 0,
+                mergePolicies: policiesList.length,
+                datasets: profileStats?.datasets || 0,
+                deleteJobs: profileStats?.deleteJobs || 0
             });
         } catch (error) {
             console.error('Error loading data:', error);
@@ -81,6 +86,18 @@ export default function Profiles() {
             setPolicyDetail(detail);
         } catch (e) {
             setPolicyDetail(policy);
+        }
+    };
+
+    const runOrphanCheck = async () => {
+        setCheckingOrphans(true);
+        try {
+            const result = await checkOrphanedProfiles();
+            setOrphanCheck(result);
+        } catch (e) {
+            console.error(e);
+        } finally {
+            setCheckingOrphans(false);
         }
     };
 
@@ -142,6 +159,51 @@ export default function Profiles() {
                 <div className="stat-card">
                     <div className="stat-card-value">0</div>
                     <div className="stat-card-label">DELETE JOBS</div>
+                </div>
+            </div>
+
+            {/* System Health Widget */}
+            <div className="chart-section" style={{ marginBottom: '24px', background: 'var(--bg-secondary)', border: '1px solid var(--border-subtle)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                    <h3 style={{ margin: 0 }}>System Health & Hygiene</h3>
+                    <button
+                        className="btn-primary"
+                        onClick={runOrphanCheck}
+                        disabled={checkingOrphans}
+                        style={{ fontSize: '12px', padding: '6px 12px' }}
+                    >
+                        {checkingOrphans ? 'Analyzing...' : 'Run Hygiene Check'}
+                    </button>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+                    <div>
+                        <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '4px' }}>TOTAL PROFILES (FAST)</div>
+                        <div style={{ fontSize: '24px', fontWeight: 600 }}>
+                            {stats?.totalProfiles?.toLocaleString() || '-'}
+                        </div>
+                        <div style={{ fontSize: '11px', color: 'var(--success-green)', marginTop: '4px' }}>
+                            Last updated: {new Date().toLocaleDateString()}
+                        </div>
+                    </div>
+
+                    <div>
+                        <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '4px' }}>INACTIVE PROFILES (&gt;90 DAYS)</div>
+                        {orphanCheck ? (
+                            <div>
+                                <div style={{ fontSize: '24px', fontWeight: 600, color: 'var(--accent-orange)' }}>
+                                    {orphanCheck.sql ? 'Query Running...' : '0'}
+                                </div>
+                                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                                    query_id: {orphanCheck.queryId}
+                                </div>
+                            </div>
+                        ) : (
+                            <div style={{ fontSize: '13px', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                                Run check to analyze
+                            </div>
+                        )}
+                    </div>
                 </div>
             </div>
 

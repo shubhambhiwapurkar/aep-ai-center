@@ -135,6 +135,11 @@ router.get('/schemas/extract-for-ai', asyncHandler(async (req, res) => {
     res.json(extracted);
 }));
 
+router.get('/schemas/dictionary', asyncHandler(async (req, res) => {
+    const dictionary = await schemaService.generateDataDictionary();
+    res.json(dictionary);
+}));
+
 router.get('/schemas/:schemaId', asyncHandler(async (req, res) => {
     const schema = await schemaService.getSchemaDetails(req.params.schemaId, req.query.container || 'tenant');
     res.json(schema);
@@ -295,6 +300,11 @@ router.get('/profiles/distribution/dataset', asyncHandler(async (req, res) => {
 router.get('/profiles/distribution/namespace', asyncHandler(async (req, res) => {
     const report = await profileService.getProfilesByNamespace(req.query.date);
     res.json(report);
+}));
+
+router.get('/profiles/orphans', asyncHandler(async (req, res) => {
+    const result = await profileService.checkOrphanedProfiles(req.query.months || 3);
+    res.json(result);
 }));
 
 router.get('/merge-policies', asyncHandler(async (req, res) => {
@@ -763,4 +773,97 @@ router.delete('/agent/history', asyncHandler(async (req, res) => {
     res.json({ success: true });
 }));
 
+// ===== CHAT HISTORY (Recall) =====
+import * as chatService from '../services/chat.service.js';
+
+router.get('/chat/conversations', asyncHandler(async (req, res) => {
+    const conversations = chatService.getConversations();
+    res.json({ conversations });
+}));
+
+router.get('/chat/conversations/:id', asyncHandler(async (req, res) => {
+    const conversation = chatService.getConversation(req.params.id);
+    if (!conversation) {
+        return res.status(404).json({ error: 'Conversation not found' });
+    }
+    res.json(conversation);
+}));
+
+router.post('/chat/conversations', asyncHandler(async (req, res) => {
+    const { title } = req.body;
+    const conversation = chatService.createConversation(title);
+    res.json(conversation);
+}));
+
+router.put('/chat/conversations/:id', asyncHandler(async (req, res) => {
+    const { messages } = req.body;
+    const conversation = chatService.saveMessages(req.params.id, messages);
+    res.json(conversation);
+}));
+
+router.delete('/chat/conversations/:id', asyncHandler(async (req, res) => {
+    chatService.deleteConversation(req.params.id);
+    res.json({ success: true });
+}));
+
+router.delete('/chat/conversations', asyncHandler(async (req, res) => {
+    chatService.clearAllConversations();
+    res.json({ success: true });
+}));
+
+// ===== SCHEMA CONTEXT FOR AGENT =====
+router.get('/agent/schema-context', asyncHandler(async (req, res) => {
+    // Get all schemas with their field paths for agent context
+    try {
+        const schemas = await schemaService.listSchemas('tenant', { limit: 50 });
+        const schemaList = schemas?.results || [];
+
+        // Extract field paths from schemas
+        const fieldPaths = [];
+        for (const schema of schemaList.slice(0, 10)) {
+            try {
+                const details = await schemaService.getSchemaDetails(schema.$id || schema.meta?.altId, 'tenant');
+                if (details?.properties) {
+                    extractFieldPaths(details.properties, '', fieldPaths, schema.title);
+                }
+            } catch (e) {
+                // Skip schemas that fail to load
+            }
+        }
+
+        res.json({
+            schemaCount: schemaList.length,
+            fieldPaths: fieldPaths.slice(0, 100), // Limit to top 100 fields
+            commonFields: extractCommonFields(fieldPaths)
+        });
+    } catch (error) {
+        res.json({ error: error.message, fieldPaths: [], commonFields: [] });
+    }
+}));
+
+// Helper to extract field paths from schema
+function extractFieldPaths(properties, prefix, results, schemaTitle) {
+    for (const [key, value] of Object.entries(properties || {})) {
+        const path = prefix ? `${prefix}.${key}` : key;
+        results.push({
+            path,
+            type: value.type || 'object',
+            title: value.title || key,
+            schema: schemaTitle
+        });
+        if (value.properties) {
+            extractFieldPaths(value.properties, path, results, schemaTitle);
+        }
+    }
+}
+
+// Extract common profile fields
+function extractCommonFields(fieldPaths) {
+    const commonPatterns = ['email', 'gender', 'birthDate', 'age', 'firstName', 'lastName', 'phone', 'address', 'city', 'country'];
+    return fieldPaths.filter(f =>
+        commonPatterns.some(p => f.path.toLowerCase().includes(p.toLowerCase()))
+    ).slice(0, 20);
+}
+
 export default router;
+

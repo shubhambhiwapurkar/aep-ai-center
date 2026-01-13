@@ -59,6 +59,7 @@ export const getSchemaDetails = (schemaId, container = 'tenant') =>
     fetchAPI(`/schemas/${encodeURIComponent(schemaId)}?container=${container}`);
 export const getSchemaSampleData = (schemaId, container = 'tenant') =>
     fetchAPI(`/schemas/${encodeURIComponent(schemaId)}/sample?container=${container}`);
+export const generateDataDictionary = () => fetchAPI('/schemas/dictionary');
 export const exportSchema = (schemaId) =>
     fetchAPI(`/schemas/${encodeURIComponent(schemaId)}/export`);
 export const getFieldGroups = (container = 'tenant', filters = {}) => {
@@ -149,7 +150,7 @@ export const getProfilesByDataset = (date) =>
     fetchAPI(`/profiles/distribution/dataset${date ? '?date=' + date : ''}`);
 export const getProfilesByNamespace = (date) =>
     fetchAPI(`/profiles/distribution/namespace${date ? '?date=' + date : ''}`);
-export const getProfileDistribution = () => fetchAPI('/profiles/distribution');
+export const getProfileDistribution = () => fetchAPI('/profiles/distribution/dataset');
 export const getMergePolicies = (filters = {}) => {
     const params = new URLSearchParams(filters).toString();
     return fetchAPI(`/merge-policies${params ? '?' + params : ''}`);
@@ -164,6 +165,7 @@ export const getComputedAttributes = () => fetchAPI('/computed-attributes');
 export const getProjections = (schemaName) =>
     fetchAPI(`/projections${schemaName ? '?schemaName=' + schemaName : ''}`);
 export const getProjectionDestinations = () => fetchAPI('/projection-destinations');
+export const checkOrphanedProfiles = (months) => fetchAPI(`/profiles/orphans?months=${months || 3}`);
 
 // ===== QUERIES =====
 export const getQueries = (filters = {}) => {

@@ -4,6 +4,7 @@ import {
     getBatches, getBatchDetails, getFailedRecords,
     getBatchMeta, getBatchFiles, getBatchStats, getBatchTimeline
 } from '../services/api';
+import { sendAgentMessage } from '../services/agent-api';
 import {
     JSONViewer, TabPanel, DetailField, StatusBadge,
     LoadingSpinner, EmptyState, Modal, ClickableId
@@ -25,6 +26,34 @@ export default function BatchMonitor() {
     const [activeTab, setActiveTab] = useState('info');
     const [detailData, setDetailData] = useState({});
     const [detailLoading, setDetailLoading] = useState(false);
+
+    // AI Error Analysis
+    const [aiAnalysis, setAiAnalysis] = useState(null);
+    const [aiAnalyzing, setAiAnalyzing] = useState(false);
+    const [aiError, setAiError] = useState(null);
+
+    const runAIAnalysis = async (batchId) => {
+        setAiAnalyzing(true);
+        setAiError(null);
+        setAiAnalysis(null);
+
+        try {
+            const response = await sendAgentMessage({
+                message: `Analyze the errors in batch ${batchId}`,
+                context: { page: 'BatchMonitor', path: '/batches' }
+            });
+
+            setAiAnalysis({
+                content: response.content || response.message,
+                data: response.data,
+                toolsUsed: response.toolsUsed || []
+            });
+        } catch (error) {
+            setAiError(error.message);
+        } finally {
+            setAiAnalyzing(false);
+        }
+    };
 
     useEffect(() => {
         loadData();
@@ -64,10 +93,17 @@ export default function BatchMonitor() {
         setActiveTab('info');
         setDetailData({});
         setDetailLoading(true);
+        setAiAnalysis(null);
+        setAiError(null);
 
         try {
             const details = await getBatchDetails(batch.id);
             setDetailData({ info: details || batch });
+
+            // Auto-analyze failed batches
+            if (batch.status === 'failed' || details?.status === 'failed') {
+                runAIAnalysis(batch.id);
+            }
         } catch (e) {
             setDetailData({ info: batch });
         } finally {
@@ -332,6 +368,80 @@ export default function BatchMonitor() {
                                                         <button className="btn-secondary">Complete Batch</button>
                                                         <button className="btn-secondary" style={{ color: 'var(--accent-red)' }}>Abort Batch</button>
                                                     </div>
+                                                </div>
+                                            )}
+
+                                            {/* AI Analysis for failed batches */}
+                                            {(selectedBatch?.status === 'failed' || selectedBatch?.failedRecordCount > 0) && (
+                                                <div style={{ marginTop: '20px', padding: '16px', background: 'var(--accent-purple-glow)', borderRadius: '8px' }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
+                                                        <span style={{ fontSize: '18px' }}>🔍</span>
+                                                        <div>
+                                                            <div style={{ fontWeight: 600 }}>AI Error Diagnosis</div>
+                                                            <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                                                                Let AI analyze the errors and provide human-readable explanations
+                                                            </div>
+                                                        </div>
+                                                        <button
+                                                            className="btn-primary"
+                                                            onClick={() => runAIAnalysis(selectedBatch.id)}
+                                                            disabled={aiAnalyzing}
+                                                            style={{ marginLeft: 'auto' }}
+                                                        >
+                                                            {aiAnalyzing ? '⏳ Analyzing...' : '🤖 Analyze Errors'}
+                                                        </button>
+                                                    </div>
+
+                                                    {/* AI Error */}
+                                                    {aiError && (
+                                                        <div style={{
+                                                            padding: '12px', background: 'rgba(239,68,68,0.15)',
+                                                            borderRadius: '8px', color: 'var(--accent-red)', fontSize: '13px'
+                                                        }}>
+                                                            ❌ {aiError}
+                                                        </div>
+                                                    )}
+
+                                                    {/* AI Analysis Result */}
+                                                    {aiAnalysis && (
+                                                        <div style={{
+                                                            padding: '16px', background: 'var(--bg-primary)',
+                                                            borderRadius: '8px', border: '1px solid var(--accent-green)'
+                                                        }}>
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                                                                <span style={{ color: 'var(--accent-green)' }}>✅</span>
+                                                                <span style={{ fontWeight: 600 }}>Analysis Complete</span>
+                                                                {aiAnalysis.toolsUsed?.length > 0 && (
+                                                                    <span style={{ fontSize: '10px', color: 'var(--text-muted)', marginLeft: 'auto' }}>
+                                                                        🔧 {aiAnalysis.toolsUsed.join(', ')}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                            <div style={{ whiteSpace: 'pre-wrap', fontSize: '13px', lineHeight: 1.6 }}>
+                                                                {aiAnalysis.content}
+                                                            </div>
+
+                                                            {aiAnalysis.data?.findings?.length > 0 && (
+                                                                <div style={{ marginTop: '16px', paddingTop: '12px', borderTop: '1px solid var(--border-subtle)' }}>
+                                                                    <div style={{ fontWeight: 600, marginBottom: '8px' }}>Key Findings:</div>
+                                                                    {aiAnalysis.data.findings.map((finding, i) => (
+                                                                        <div key={i} style={{
+                                                                            padding: '8px 12px', marginBottom: '8px',
+                                                                            background: 'var(--bg-secondary)', borderRadius: '6px',
+                                                                            borderLeft: '3px solid var(--accent-yellow)'
+                                                                        }}>
+                                                                            <div style={{ fontWeight: 500 }}>{finding.finding}</div>
+                                                                            {finding.recommendation && (
+                                                                                <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                                                                                    💡 {finding.recommendation}
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )}
                                                 </div>
                                             )}
                                         </div>

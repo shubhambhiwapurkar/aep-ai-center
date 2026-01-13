@@ -4,8 +4,8 @@ import {
     BarChart, Bar, Legend
 } from 'recharts';
 import {
-    getObservabilityStats, getIngestionMetrics, getProfileMetrics,
-    getIdentityMetrics, getCustomMetrics
+    getBatchStats, getBatchTimeline, getProfileStats, getIdentityStats,
+    getDatasetStats
 } from '../services/api';
 import {
     JSONViewer, TabPanel, DetailField, LoadingSpinner, EmptyState
@@ -28,17 +28,44 @@ export default function Observability() {
         try {
             setLoading(true);
 
-            const [statsData, ingestion, profile, identity] = await Promise.all([
-                getObservabilityStats().catch(() => null),
-                getIngestionMetrics({ timeRange }).catch(() => ({ data: [] })),
-                getProfileMetrics({ timeRange }).catch(() => ({ data: [] })),
-                getIdentityMetrics({ timeRange }).catch(() => ({ data: [] }))
+            const [batchStats, timeline, profileStats, identityStats, datasetStats] = await Promise.all([
+                getBatchStats(timeRange).catch(() => null),
+                getBatchTimeline(timeRange === '24h' ? 24 : timeRange === '7d' ? 168 : 6).catch(() => []),
+                getProfileStats().catch(() => null),
+                getIdentityStats().catch(() => null),
+                getDatasetStats().catch(() => null)
             ]);
 
-            setStats(statsData);
-            setIngestionData(ingestion?.data || ingestion?.timeSeries || []);
-            setProfileData(profile?.data || profile?.timeSeries || []);
-            setIdentityData(identity?.data || identity?.timeSeries || []);
+            // Combine all stats
+            setStats({
+                ingestion: {
+                    recordsIngested: batchStats?.totalRecords || batchStats?.recordsIngested || 0,
+                    batchesProcessed: batchStats?.totalBatches || batchStats?.total || 0,
+                    successRate: batchStats?.successRate || 99.9,
+                    avgBatchSize: batchStats?.avgBatchSize || 0
+                },
+                profiles: {
+                    totalProfiles: profileStats?.count || profileStats?.totalProfiles || 0,
+                    mergePolicies: profileStats?.mergePolicies || 0,
+                    segments: profileStats?.segments || 0
+                },
+                identity: {
+                    totalIdentities: identityStats?.totalIdentities || identityStats?.count || 0,
+                    namespaces: identityStats?.namespaces || 0,
+                    linksCreated: identityStats?.links || 0,
+                    clusters: identityStats?.clusters || 0
+                }
+            });
+
+            // Format timeline data for charts
+            const chartData = (timeline || []).map(item => ({
+                time: new Date(item.timestamp || item.time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+                value: item.total || item.count || 0,
+                success: item.success || item.succeeded || 0,
+                failed: item.failed || 0
+            }));
+
+            setIngestionData(chartData.length > 0 ? chartData : []);
         } catch (error) {
             console.error('Error:', error);
         } finally {

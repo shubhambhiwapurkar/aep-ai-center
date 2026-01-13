@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
     getSchemas, getSchemaStats, getSchemaDetails, getSchemaSampleData,
     exportSchema, getFieldGroups, getClasses, getDataTypes, getUnionSchemas,
-    extractSchemaForAI, getBehaviors, getDescriptors
+    extractSchemaForAI, getBehaviors, getDescriptors, generateDataDictionary
 } from '../services/api';
 import {
     JSONViewer, TabPanel, DetailField, StatusBadge,
@@ -25,6 +25,8 @@ export default function SchemaBrowser() {
     const [detailData, setDetailData] = useState({});
     const [detailLoading, setDetailLoading] = useState(false);
     const [aiExport, setAiExport] = useState(null);
+    const [dictionary, setDictionary] = useState(null);
+    const [generatingDict, setGeneratingDict] = useState(false);
 
     useEffect(() => {
         loadData();
@@ -134,6 +136,18 @@ export default function SchemaBrowser() {
         }
     };
 
+    const splitDictionary = async () => {
+        setGeneratingDict(true);
+        try {
+            const result = await generateDataDictionary();
+            setDictionary(result);
+        } catch (e) {
+            console.error('Dictionary error:', e);
+        } finally {
+            setGeneratingDict(false);
+        }
+    };
+
     const extractForAI = async () => {
         try {
             setLoading(true);
@@ -227,10 +241,54 @@ export default function SchemaBrowser() {
                         {cat.label}
                     </button>
                 ))}
-                <button className="btn-secondary" style={{ marginLeft: 'auto' }} onClick={extractForAI}>
-                    Extract for AI
-                </button>
+                <div style={{ marginLeft: 'auto', display: 'flex', gap: '8px' }}>
+                    <button
+                        className="btn-secondary"
+                        onClick={splitDictionary}
+                        disabled={generatingDict}
+                    >
+                        {generatingDict ? 'Building...' : '📖 Data Dictionary'}
+                    </button>
+                    <button className="btn-secondary" onClick={extractForAI}>
+                        Extract for AI
+                    </button>
+                </div>
             </div>
+
+            {/* Dictionary View */}
+            {dictionary && (
+                <div className="chart-section" style={{ marginBottom: '24px', border: '1px solid var(--accent-purple)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px' }}>
+                        <h3>📖 AI Data Dictionary</h3>
+                        <button className="btn-secondary" onClick={() => setDictionary(null)}>✕</button>
+                    </div>
+                    <div style={{ maxHeight: '400px', overflow: 'auto' }}>
+                        {dictionary.dictionaries.map(d => (
+                            <div key={d.schemaId} style={{ marginBottom: '16px', padding: '12px', background: 'var(--bg-secondary)', borderRadius: '8px' }}>
+                                <div style={{ fontWeight: 600, marginBottom: '8px' }}>{d.title}</div>
+                                <table className="data-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Path</th>
+                                            <th>Type</th>
+                                            <th>Description</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {d.dictionary.map((f, i) => (
+                                            <tr key={i}>
+                                                <td style={{ fontFamily: 'monospace', fontSize: '11px', color: 'var(--accent-cyan)' }}>{f.path}</td>
+                                                <td><StatusBadge status={f.type} size="small" /></td>
+                                                <td style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{f.description.substring(0, 50)}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
 
             {/* Search */}
             <div style={{ marginBottom: '16px' }}>
