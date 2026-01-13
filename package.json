@@ -1,0 +1,19 @@
+{
+    "name": "aep-ai-center",
+    "version": "1.0.0",
+    "description": "Adobe Experience Platform Enterprise Monitoring & Agent System",
+    "scripts": {
+        "start": "cd backend && npm start",
+        "dev": "cd frontend && npm run dev",
+        "install:all": "cd backend && npm install && cd ../frontend && npm install"
+    },
+    "keywords": [
+        "aep",
+        "adobe-experience-platform",
+        "agent",
+        "monitoring",
+        "ai"
+    ],
+    "author": "",
+    "license": "ISC"
+}
