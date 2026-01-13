@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react';
 import {
     JSONViewer, TabPanel, DetailField, StatusBadge,
-    LoadingSpinner, EmptyState
+    LoadingSpinner, EmptyState, Modal
 } from '../components/SharedComponents';
 
 export default function DataIngestion() {
@@ -13,6 +13,21 @@ export default function DataIngestion() {
     const [streamingResult, setStreamingResult] = useState(null);
     const [selectedDataset, setSelectedDataset] = useState('');
     const fileInputRef = useRef(null);
+
+    // File Preview state
+    const [previewFile, setPreviewFile] = useState(null);
+    const [previewContent, setPreviewContent] = useState(null);
+    const [previewLoading, setPreviewLoading] = useState(false);
+    const [validationResult, setValidationResult] = useState(null);
+
+    // Streaming Lag Indicator
+    const [streamingStats, setStreamingStats] = useState({
+        lastLatency: null,
+        avgLatency: null,
+        successCount: 0,
+        errorCount: 0,
+        history: []
+    });
 
     // Simulated datasets for selection
     const datasets = [
@@ -54,6 +69,90 @@ export default function DataIngestion() {
         setFiles(prev => prev.filter(f => f.id !== id));
     };
 
+    // Preview and validate file
+    const openPreview = async (file) => {
+        setPreviewFile(file);
+        setPreviewLoading(true);
+        setPreviewContent(null);
+        setValidationResult(null);
+
+        try {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const content = e.target.result;
+                let parsed = null;
+                let validation = { valid: true, errors: [], warnings: [], fields: [] };
+
+                if (file.type.includes('json') || file.name.endsWith('.json')) {
+                    try {
+                        parsed = JSON.parse(content);
+
+                        // Validate JSON structure
+                        if (Array.isArray(parsed)) {
+                            validation.recordCount = parsed.length;
+                            if (parsed.length > 0) {
+                                validation.fields = Object.keys(parsed[0]);
+                                validation.sampleRecord = parsed[0];
+                            }
+                        } else if (typeof parsed === 'object') {
+                            validation.recordCount = 1;
+                            validation.fields = Object.keys(parsed);
+                            validation.sampleRecord = parsed;
+
+                            // Check for XDM structure
+                            if (parsed.xdmEntity || parsed.body?.xdmEntity) {
+                                validation.hasXdmStructure = true;
+                            } else {
+                                validation.warnings.push('No XDM entity structure detected - ensure data matches target schema');
+                            }
+                        }
+
+                        // Check for required XDM fields
+                        const flatContent = JSON.stringify(parsed);
+                        if (!flatContent.includes('"_id"') && !flatContent.includes('"identityMap"')) {
+                            validation.warnings.push('No _id or identityMap found - records may not be linkable');
+                        }
+
+                    } catch (parseError) {
+                        validation.valid = false;
+                        validation.errors.push('Invalid JSON: ' + parseError.message);
+                    }
+                } else if (file.type.includes('csv') || file.name.endsWith('.csv')) {
+                    // Parse CSV header
+                    const lines = content.split('\n').filter(l => l.trim());
+                    if (lines.length > 0) {
+                        validation.fields = lines[0].split(',').map(f => f.trim().replace(/"/g, ''));
+                        validation.recordCount = lines.length - 1;
+
+                        if (lines.length > 1) {
+                            const sampleValues = lines[1].split(',').map(v => v.trim().replace(/"/g, ''));
+                            validation.sampleRecord = {};
+                            validation.fields.forEach((field, i) => {
+                                validation.sampleRecord[field] = sampleValues[i] || '';
+                            });
+                        }
+
+                        // Check for common identity fields
+                        const fieldsLower = validation.fields.map(f => f.toLowerCase());
+                        if (!fieldsLower.some(f => f.includes('email') || f.includes('id') || f.includes('ecid'))) {
+                            validation.warnings.push('No obvious identity fields detected (email, id, ecid)');
+                        }
+                    }
+                } else {
+                    validation.warnings.push('File type cannot be previewed - will be validated during ingestion');
+                }
+
+                setPreviewContent(content.slice(0, 5000));
+                setValidationResult(validation);
+                setPreviewLoading(false);
+            };
+            reader.readAsText(file.file.slice(0, 100000)); // Read first 100KB for preview
+        } catch (error) {
+            setValidationResult({ valid: false, errors: [error.message] });
+            setPreviewLoading(false);
+        }
+    };
+
     const uploadFiles = async () => {
         if (!selectedDataset) {
             alert('Please select a target dataset');
@@ -88,20 +187,53 @@ export default function DataIngestion() {
             return;
         }
 
+        const startTime = Date.now();
+
         try {
             const parsed = JSON.parse(streamingData);
+
+            // Simulate API call time for demo
+            await new Promise(r => setTimeout(r, 50 + Math.random() * 150));
+
+            const latency = Date.now() - startTime;
+
             setStreamingResult({
                 status: 'success',
                 message: 'Data sent successfully',
                 timestamp: new Date().toISOString(),
-                records: Array.isArray(parsed) ? parsed.length : 1
+                records: Array.isArray(parsed) ? parsed.length : 1,
+                latencyMs: latency
+            });
+
+            // Update streaming stats
+            setStreamingStats(prev => {
+                const newHistory = [...prev.history.slice(-19), { latency, success: true, time: Date.now() }];
+                const avgLatency = newHistory.reduce((sum, h) => sum + h.latency, 0) / newHistory.length;
+                return {
+                    lastLatency: latency,
+                    avgLatency: Math.round(avgLatency),
+                    successCount: prev.successCount + 1,
+                    errorCount: prev.errorCount,
+                    history: newHistory
+                };
             });
         } catch (e) {
+            const latency = Date.now() - startTime;
+
             setStreamingResult({
                 status: 'error',
                 message: 'Invalid JSON: ' + e.message,
-                timestamp: new Date().toISOString()
+                timestamp: new Date().toISOString(),
+                latencyMs: latency
             });
+
+            // Update error count
+            setStreamingStats(prev => ({
+                ...prev,
+                lastLatency: latency,
+                errorCount: prev.errorCount + 1,
+                history: [...prev.history.slice(-19), { latency, success: false, time: Date.now() }]
+            }));
         }
     };
 
@@ -288,21 +420,30 @@ export default function DataIngestion() {
                                                     )}
                                                 </div>
                                             </div>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                                 <StatusBadge status={file.status} />
                                                 {file.status === 'pending' && (
-                                                    <button
-                                                        onClick={() => removeFile(file.id)}
-                                                        style={{
-                                                            background: 'none',
-                                                            border: 'none',
-                                                            color: 'var(--text-muted)',
-                                                            cursor: 'pointer',
-                                                            fontSize: '18px'
-                                                        }}
-                                                    >
-                                                        ✕
-                                                    </button>
+                                                    <>
+                                                        <button
+                                                            className="btn-secondary"
+                                                            onClick={() => openPreview(file)}
+                                                            style={{ padding: '4px 8px', fontSize: '11px' }}
+                                                        >
+                                                            👁️ Preview
+                                                        </button>
+                                                        <button
+                                                            onClick={() => removeFile(file.id)}
+                                                            style={{
+                                                                background: 'none',
+                                                                border: 'none',
+                                                                color: 'var(--text-muted)',
+                                                                cursor: 'pointer',
+                                                                fontSize: '18px'
+                                                            }}
+                                                        >
+                                                            ✕
+                                                        </button>
+                                                    </>
                                                 )}
                                             </div>
                                         </div>
@@ -316,6 +457,71 @@ export default function DataIngestion() {
                 {/* STREAMING TAB */}
                 {activeTab === 'streaming' && (
                     <div>
+                        {/* Streaming Lag Indicator */}
+                        {streamingStats.history.length > 0 && (
+                            <div className="card" style={{ marginBottom: '16px', padding: '16px' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <span style={{ fontSize: '18px' }}>📊</span>
+                                        <span style={{ fontWeight: 600 }}>Streaming Lag Indicator</span>
+                                    </div>
+                                    <button
+                                        className="btn-secondary"
+                                        style={{ fontSize: '11px', padding: '4px 8px' }}
+                                        onClick={() => setStreamingStats({ lastLatency: null, avgLatency: null, successCount: 0, errorCount: 0, history: [] })}
+                                    >
+                                        Reset
+                                    </button>
+                                </div>
+
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', marginBottom: '12px' }}>
+                                    <div style={{ textAlign: 'center', padding: '12px', background: 'var(--bg-secondary)', borderRadius: '8px' }}>
+                                        <div style={{ fontSize: '24px', fontWeight: 700, color: streamingStats.lastLatency > 200 ? 'var(--accent-red)' : streamingStats.lastLatency > 100 ? 'var(--accent-yellow)' : 'var(--accent-green)' }}>
+                                            {streamingStats.lastLatency || '-'}ms
+                                        </div>
+                                        <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>LAST LATENCY</div>
+                                    </div>
+                                    <div style={{ textAlign: 'center', padding: '12px', background: 'var(--bg-secondary)', borderRadius: '8px' }}>
+                                        <div style={{ fontSize: '24px', fontWeight: 700, color: 'var(--accent-blue)' }}>
+                                            {streamingStats.avgLatency || '-'}ms
+                                        </div>
+                                        <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>AVG LATENCY</div>
+                                    </div>
+                                    <div style={{ textAlign: 'center', padding: '12px', background: 'var(--bg-secondary)', borderRadius: '8px' }}>
+                                        <div style={{ fontSize: '24px', fontWeight: 700, color: 'var(--accent-green)' }}>
+                                            {streamingStats.successCount}
+                                        </div>
+                                        <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>SUCCESS</div>
+                                    </div>
+                                    <div style={{ textAlign: 'center', padding: '12px', background: 'var(--bg-secondary)', borderRadius: '8px' }}>
+                                        <div style={{ fontSize: '24px', fontWeight: 700, color: streamingStats.errorCount > 0 ? 'var(--accent-red)' : 'var(--text-muted)' }}>
+                                            {streamingStats.errorCount}
+                                        </div>
+                                        <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>ERRORS</div>
+                                    </div>
+                                </div>
+
+                                {/* Latency History Bar Chart */}
+                                <div style={{ display: 'flex', gap: '2px', height: '40px', alignItems: 'flex-end' }}>
+                                    {streamingStats.history.map((h, i) => (
+                                        <div
+                                            key={i}
+                                            style={{
+                                                flex: 1,
+                                                height: `${Math.min((h.latency / 300) * 100, 100)}%`,
+                                                background: h.success
+                                                    ? h.latency > 200 ? 'var(--accent-red)' : h.latency > 100 ? 'var(--accent-yellow)' : 'var(--accent-green)'
+                                                    : 'var(--accent-red)',
+                                                borderRadius: '2px',
+                                                minHeight: '4px'
+                                            }}
+                                            title={`${h.latency}ms - ${h.success ? 'Success' : 'Error'}`}
+                                        />
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
                         <div style={{ marginBottom: '16px' }}>
                             <label style={{ display: 'block', marginBottom: '8px', fontWeight: 500 }}>
                                 JSON Payload
@@ -388,6 +594,143 @@ export default function DataIngestion() {
                     />
                 )}
             </TabPanel>
+
+            {/* File Preview Modal */}
+            <Modal
+                isOpen={!!previewFile}
+                onClose={() => { setPreviewFile(null); setPreviewContent(null); setValidationResult(null); }}
+                title={`📄 File Preview: ${previewFile?.name || ''}`}
+                width="800px"
+            >
+                {previewLoading ? (
+                    <LoadingSpinner text="Analyzing file..." />
+                ) : validationResult && (
+                    <div>
+                        {/* Validation Status */}
+                        <div style={{
+                            padding: '16px',
+                            marginBottom: '16px',
+                            background: validationResult.valid ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)',
+                            borderRadius: '8px',
+                            borderLeft: `3px solid ${validationResult.valid ? 'var(--accent-green)' : 'var(--accent-red)'}`
+                        }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <span style={{ fontSize: '18px' }}>{validationResult.valid ? '✅' : '❌'}</span>
+                                <span style={{ fontWeight: 600 }}>
+                                    {validationResult.valid ? 'File is valid for ingestion' : 'Validation errors found'}
+                                </span>
+                            </div>
+                            {validationResult.hasXdmStructure && (
+                                <div style={{ fontSize: '12px', color: 'var(--accent-green)', marginTop: '4px' }}>
+                                    ✓ XDM entity structure detected
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Stats */}
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', marginBottom: '16px' }}>
+                            <div className="stat-card" style={{ padding: '12px' }}>
+                                <div className="stat-card-value" style={{ fontSize: '20px' }}>{validationResult.recordCount || 0}</div>
+                                <div className="stat-card-label" style={{ fontSize: '10px' }}>RECORDS</div>
+                            </div>
+                            <div className="stat-card" style={{ padding: '12px' }}>
+                                <div className="stat-card-value" style={{ fontSize: '20px' }}>{validationResult.fields?.length || 0}</div>
+                                <div className="stat-card-label" style={{ fontSize: '10px' }}>FIELDS</div>
+                            </div>
+                            <div className="stat-card" style={{ padding: '12px' }}>
+                                <div className="stat-card-value" style={{ fontSize: '20px', color: validationResult.warnings?.length > 0 ? 'var(--accent-yellow)' : 'var(--accent-green)' }}>
+                                    {validationResult.warnings?.length || 0}
+                                </div>
+                                <div className="stat-card-label" style={{ fontSize: '10px' }}>WARNINGS</div>
+                            </div>
+                        </div>
+
+                        {/* Errors */}
+                        {validationResult.errors?.length > 0 && (
+                            <div style={{ marginBottom: '16px' }}>
+                                <div style={{ fontWeight: 600, marginBottom: '8px', color: 'var(--accent-red)' }}>Errors:</div>
+                                {validationResult.errors.map((err, i) => (
+                                    <div key={i} style={{
+                                        padding: '8px 12px', background: 'rgba(239,68,68,0.1)',
+                                        borderRadius: '6px', marginBottom: '4px', fontSize: '13px'
+                                    }}>
+                                        🔴 {err}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        {/* Warnings */}
+                        {validationResult.warnings?.length > 0 && (
+                            <div style={{ marginBottom: '16px' }}>
+                                <div style={{ fontWeight: 600, marginBottom: '8px', color: 'var(--accent-yellow)' }}>Warnings:</div>
+                                {validationResult.warnings.map((warn, i) => (
+                                    <div key={i} style={{
+                                        padding: '8px 12px', background: 'rgba(234,179,8,0.1)',
+                                        borderRadius: '6px', marginBottom: '4px', fontSize: '13px'
+                                    }}>
+                                        🟡 {warn}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        {/* Fields */}
+                        {validationResult.fields?.length > 0 && (
+                            <div style={{ marginBottom: '16px' }}>
+                                <div style={{ fontWeight: 600, marginBottom: '8px' }}>Detected Fields ({validationResult.fields.length}):</div>
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                                    {validationResult.fields.slice(0, 20).map((field, i) => (
+                                        <span key={i} style={{
+                                            padding: '4px 10px', background: 'var(--bg-secondary)',
+                                            borderRadius: '4px', fontSize: '11px', fontFamily: 'monospace'
+                                        }}>
+                                            {field}
+                                        </span>
+                                    ))}
+                                    {validationResult.fields.length > 20 && (
+                                        <span style={{ fontSize: '11px', color: 'var(--text-muted)', alignSelf: 'center' }}>
+                                            +{validationResult.fields.length - 20} more
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Sample Record */}
+                        {validationResult.sampleRecord && (
+                            <details>
+                                <summary style={{ cursor: 'pointer', fontWeight: 600, marginBottom: '8px' }}>
+                                    Sample Record
+                                </summary>
+                                <pre style={{
+                                    padding: '12px', background: 'var(--bg-primary)',
+                                    borderRadius: '8px', fontSize: '11px',
+                                    overflow: 'auto', maxHeight: '200px'
+                                }}>
+                                    {JSON.stringify(validationResult.sampleRecord, null, 2)}
+                                </pre>
+                            </details>
+                        )}
+
+                        {/* Raw Content Preview */}
+                        {previewContent && (
+                            <details style={{ marginTop: '16px' }}>
+                                <summary style={{ cursor: 'pointer', fontWeight: 600, marginBottom: '8px' }}>
+                                    Raw Content Preview (first 5KB)
+                                </summary>
+                                <pre style={{
+                                    padding: '12px', background: 'var(--bg-primary)',
+                                    borderRadius: '8px', fontSize: '10px',
+                                    overflow: 'auto', maxHeight: '200px', whiteSpace: 'pre-wrap'
+                                }}>
+                                    {previewContent}
+                                </pre>
+                            </details>
+                        )}
+                    </div>
+                )}
+            </Modal>
         </>
     );
 }

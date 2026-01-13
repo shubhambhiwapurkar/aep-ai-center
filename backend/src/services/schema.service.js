@@ -296,5 +296,50 @@ function extractProperties(properties, depth = 0) {
         }
     }
 
+
     return extracted;
+}
+
+/**
+ * Generate a flattened Data Dictionary for the API
+ */
+export async function generateDataDictionary() {
+    // 1. Fetch Schema Context
+    const context = await extractUnionSchemaForAI();
+
+    // 2. Flatten Logic
+    const flattenProperties = (props, prefix = '') => {
+        let items = [];
+        for (const [key, value] of Object.entries(props)) {
+            const path = prefix ? `${prefix}.${key}` : key;
+
+            // Add current field
+            items.push({
+                path: path,
+                type: value.type || 'string',
+                title: value.title || key,
+                description: value.description || 'No description available',
+                sql_column: path.replace(/\./g, '_') // Simplified mapping
+            });
+
+            // Recurse if nested
+            if (value.properties) {
+                items = items.concat(flattenProperties(value.properties, path));
+            }
+        }
+        return items;
+    };
+
+    const dictionaries = context.schemas.map(schema => ({
+        schemaId: schema.id,
+        title: schema.title,
+        fieldCount: Object.keys(schema.properties).length,
+        dictionary: flattenProperties(schema.properties)
+    }));
+
+    return {
+        generatedAt: new Date().toISOString(),
+        totalSchemas: dictionaries.length,
+        dictionaries: dictionaries
+    };
 }

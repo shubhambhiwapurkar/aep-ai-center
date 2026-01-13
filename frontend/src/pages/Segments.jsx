@@ -3,6 +3,7 @@ import {
     getSegments, getSegmentDetails, getSegmentJobs, getExportJobs,
     getSegmentStats, estimateSegment, previewSegment, getSchedules
 } from '../services/api';
+import { sendAgentMessage } from '../services/agent-api';
 import {
     JSONViewer, TabPanel, DetailField, StatusBadge,
     LoadingSpinner, EmptyState, Modal, ClickableId, CopyButton
@@ -28,6 +29,42 @@ export default function Segments() {
     // Natural Language Segment Builder
     const [nlInput, setNlInput] = useState('');
     const [showNLBuilder, setShowNLBuilder] = useState(false);
+    const [generatedPQL, setGeneratedPQL] = useState(null);
+    const [pqlLoading, setPqlLoading] = useState(false);
+    const [pqlError, setPqlError] = useState(null);
+
+    // Generate PQL from natural language
+    const handleGeneratePQL = async () => {
+        if (!nlInput.trim()) return;
+
+        setPqlLoading(true);
+        setPqlError(null);
+        setGeneratedPQL(null);
+
+        try {
+            const response = await sendAgentMessage({
+                message: `Generate a PQL expression for: ${nlInput}`,
+                context: { page: 'Segments', path: '/segments' }
+            });
+
+            // Extract PQL from response
+            const content = response.content || response.message || '';
+
+            // Try to find PQL pattern in response
+            const pqlMatch = content.match(/```[\s\S]*?```/) || content.match(/select\s+[\s\S]+/i);
+            const extractedPQL = pqlMatch ? pqlMatch[0].replace(/```/g, '').trim() : content;
+
+            setGeneratedPQL({
+                pql: extractedPQL,
+                explanation: content,
+                toolsUsed: response.toolsUsed || []
+            });
+        } catch (error) {
+            setPqlError(error.message);
+        } finally {
+            setPqlLoading(false);
+        }
+    };
 
     useEffect(() => {
         loadData();
@@ -196,15 +233,65 @@ export default function Segments() {
                         />
                         <button
                             className="btn-primary"
-                            onClick={() => {
-                                // This would call the agent tool
-                                alert(`Would call generate_pql_from_description with: "${nlInput}"\n\nOpen the Agent Panel (🤖) and try: "Generate PQL for: ${nlInput}"`);
-                            }}
-                            disabled={!nlInput.trim()}
+                            onClick={handleGeneratePQL}
+                            disabled={!nlInput.trim() || pqlLoading}
                         >
-                            Generate PQL
+                            {pqlLoading ? '⏳ Generating...' : '✨ Generate PQL'}
                         </button>
                     </div>
+
+                    {/* Error */}
+                    {pqlError && (
+                        <div style={{
+                            marginTop: '12px', padding: '12px',
+                            background: 'rgba(239,68,68,0.15)', borderRadius: '8px',
+                            color: 'var(--accent-red)', fontSize: '13px'
+                        }}>
+                            ❌ {pqlError}
+                        </div>
+                    )}
+
+                    {/* Generated PQL Result */}
+                    {generatedPQL && (
+                        <div style={{ marginTop: '16px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                                <span style={{ color: 'var(--accent-green)' }}>✅</span>
+                                <span style={{ fontWeight: 600 }}>Generated PQL Expression:</span>
+                                <CopyButton text={generatedPQL.pql} />
+                            </div>
+                            <div style={{
+                                padding: '12px', background: 'var(--bg-primary)',
+                                borderRadius: '8px', fontFamily: 'monospace', fontSize: '12px',
+                                border: '1px solid var(--accent-green)', whiteSpace: 'pre-wrap'
+                            }}>
+                                {generatedPQL.pql}
+                            </div>
+                            {generatedPQL.toolsUsed?.length > 0 && (
+                                <div style={{ marginTop: '8px', fontSize: '11px', color: 'var(--text-muted)' }}>
+                                    🔧 Tools used: {generatedPQL.toolsUsed.join(', ')}
+                                </div>
+                            )}
+                            <div style={{ marginTop: '12px', display: 'flex', gap: '8px' }}>
+                                <button
+                                    className="btn-primary"
+                                    onClick={() => {
+                                        // Copy PQL and show success
+                                        navigator.clipboard.writeText(generatedPQL.pql);
+                                        alert('PQL copied! You can now use this in the AEP Segment Builder.');
+                                    }}
+                                >
+                                    📋 Copy & Use in AEP
+                                </button>
+                                <button
+                                    className="btn-secondary"
+                                    onClick={() => setGeneratedPQL(null)}
+                                >
+                                    🔄 Generate Another
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
                     <div style={{ marginTop: '12px', fontSize: '11px', color: 'var(--text-muted)' }}>
                         Examples: "Gold loyalty members" • "Users with email who were active last week" • "High value customers over $1000"
                     </div>

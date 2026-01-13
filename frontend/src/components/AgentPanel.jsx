@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
-import { sendAgentMessage, getAgentTools } from '../services/agent-api';
+import { sendAgentMessage, getAgentTools, getConversations, getConversation, saveConversation, deleteConversation } from '../services/agent-api';
 import { getDashboardSummary, getBatches, getRecentQueries } from '../services/api';
 
 // Get context description based on current page
@@ -21,6 +21,51 @@ const getPageContext = (pathname) => {
         '/data-prep': { name: 'Data Prep', hint: 'Ask me to suggest mappings or transformations' },
     };
     return contexts[pathname] || { name: 'AEP', hint: 'How can I assist you?' };
+};
+
+// Simple Markdown parser for chat messages
+const parseMarkdown = (text) => {
+    if (!text) return '';
+
+    let html = text
+        // Escape HTML first
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        // Headers
+        .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+        .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+        .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+        // Bold
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        // Italic
+        .replace(/\*(.+?)\*/g, '<em>$1</em>')
+        // Inline code
+        .replace(/`([^`]+)`/g, '<code>$1</code>')
+        // Code blocks
+        .replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>')
+        // Bullet lists
+        .replace(/^[\*\-] (.+)$/gm, '<li>$1</li>')
+        // Numbered lists
+        .replace(/^\d+\.\s(.+)$/gm, '<li>$1</li>')
+        // Blockquotes
+        .replace(/^> (.+)$/gm, '<blockquote>$1</blockquote>')
+        // Horizontal rule
+        .replace(/^---$/gm, '<hr/>')
+        // Paragraphs (double newlines)
+        .replace(/\n\n/g, '</p><p>')
+        // Single newlines to <br>
+        .replace(/\n/g, '<br/>');
+
+    // Wrap consecutive <li> in <ul>
+    html = html.replace(/(<li>.*?<\/li>)+/gs, '<ul>$&</ul>');
+
+    // Wrap in paragraph if not starting with block element
+    if (!html.startsWith('<h') && !html.startsWith('<ul') && !html.startsWith('<pre') && !html.startsWith('<blockquote')) {
+        html = '<p>' + html + '</p>';
+    }
+
+    return html;
 };
 
 // Alert Item Component
@@ -57,6 +102,68 @@ const AlertItem = ({ alert, onClick }) => (
     </div>
 );
 
+const VerificationCard = ({ data }) => {
+    if (!data.analysis && !data.validation) return null;
+
+    // Determine status color
+    const getStatusColor = (status) => {
+        if (typeof status === 'boolean') return status ? 'var(--success-green)' : 'var(--accent-red)';
+        if (status?.toLowerCase().includes('match') || status?.toLowerCase().includes('pass')) return 'var(--success-green)';
+        if (status?.toLowerCase().includes('fail') || status?.toLowerCase().includes('mismatch')) return 'var(--accent-red)';
+        return 'var(--accent-blue)';
+    };
+
+    const status = data.match ?? data.status;
+    const color = getStatusColor(status);
+
+    return (
+        <div style={{
+            marginTop: '12px', padding: '12px',
+            background: 'var(--bg-primary)', borderRadius: '8px',
+            borderLeft: `4px solid ${color}`
+        }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                <span style={{ fontWeight: 600, fontSize: '13px' }}>
+                    {data.analysis || data.validation || 'Verification Result'}
+                </span>
+                <span style={{
+                    fontSize: '11px', fontWeight: 600,
+                    color: color,
+                    padding: '2px 8px', borderRadius: '4px',
+                    background: 'rgba(255,255,255,0.05)'
+                }}>
+                    {status === true ? 'PASS' : status === false ? 'FAIL' : String(status).toUpperCase()}
+                </span>
+            </div>
+
+            <div style={{ display: 'grid', gap: '8px', fontSize: '12px' }}>
+                {Object.entries(data).map(([key, value]) => {
+                    if (['analysis', 'validation', 'match', 'status', 'sql', 'queryId'].includes(key)) return null;
+                    return (
+                        <div key={key} style={{ display: 'flex', justifyContent: 'space-between' }}>
+                            <span style={{ color: 'var(--text-muted)' }}>{key}:</span>
+                            <span style={{ fontFamily: 'monospace' }}>{String(value)}</span>
+                        </div>
+                    );
+                })}
+
+                {data.sql && (
+                    <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid var(--border-subtle)' }}>
+                        <div style={{ color: 'var(--text-muted)', marginBottom: '4px' }}>SQL Executed:</div>
+                        <div style={{
+                            fontFamily: 'monospace', fontSize: '10px',
+                            color: 'var(--accent-cyan)', background: 'rgba(0,0,0,0.2)',
+                            padding: '6px', borderRadius: '4px', overflowX: 'auto'
+                        }}>
+                            {data.sql}
+                        </div>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+};
+
 export default function AgentPanel({ isOpen, onToggle, currentPath }) {
     const location = useLocation();
     const [messages, setMessages] = useState([]);
@@ -68,6 +175,10 @@ export default function AgentPanel({ isOpen, onToggle, currentPath }) {
     const [alerts, setAlerts] = useState([]);
     const [alertsLoading, setAlertsLoading] = useState(true);
     const [showAlerts, setShowAlerts] = useState(true);
+    const [thinkingSteps, setThinkingSteps] = useState([]);
+    const [conversations, setConversations] = useState([]);
+    const [currentConversationId, setCurrentConversationId] = useState(null);
+    const [showHistory, setShowHistory] = useState(false);
     const messagesEndRef = useRef(null);
 
     const context = getPageContext(location.pathname);
@@ -75,6 +186,7 @@ export default function AgentPanel({ isOpen, onToggle, currentPath }) {
     useEffect(() => {
         loadTools();
         loadAlerts();
+        loadConversationsList();
         // Initialize with context-aware welcome
         setMessages([{
             id: 1,
@@ -104,6 +216,64 @@ export default function AgentPanel({ isOpen, onToggle, currentPath }) {
             setTools(toolList || []);
         } catch (e) {
             console.error('Failed to load tools', e);
+        }
+    };
+
+    const loadConversationsList = async () => {
+        try {
+            const result = await getConversations();
+            setConversations(result?.conversations || []);
+        } catch (e) {
+            console.error('Failed to load conversations', e);
+        }
+    };
+
+    const loadConversation = async (convId) => {
+        try {
+            const conv = await getConversation(convId);
+            if (conv?.messages) {
+                setMessages(conv.messages);
+                setCurrentConversationId(convId);
+                setShowHistory(false);
+                setShowAlerts(false);
+            }
+        } catch (e) {
+            console.error('Failed to load conversation', e);
+        }
+    };
+
+    const startNewConversation = () => {
+        setMessages([{
+            id: 1,
+            role: 'assistant',
+            content: `👋 Welcome to **${context.name}**!\n\n${context.hint}`,
+            timestamp: new Date().toISOString()
+        }]);
+        setCurrentConversationId(null);
+        setShowHistory(false);
+    };
+
+    const saveCurrentConversation = async () => {
+        if (messages.length <= 1) return; // Don't save if only welcome message
+        try {
+            const convId = currentConversationId || `conv_${Date.now()}`;
+            await saveConversation(convId, messages);
+            setCurrentConversationId(convId);
+            loadConversationsList();
+        } catch (e) {
+            console.error('Failed to save conversation', e);
+        }
+    };
+
+    const deleteConv = async (convId) => {
+        try {
+            await deleteConversation(convId);
+            loadConversationsList();
+            if (currentConversationId === convId) {
+                startNewConversation();
+            }
+        } catch (e) {
+            console.error('Failed to delete conversation', e);
         }
     };
 
@@ -232,13 +402,36 @@ export default function AgentPanel({ isOpen, onToggle, currentPath }) {
         setInput('');
         setLoading(true);
 
+        // Show thinking steps
+        setThinkingSteps([
+            { step: 'Analyzing request...', status: 'active' }
+        ]);
+
         try {
+            // Step 1: Analyzing
+            setThinkingSteps([
+                { step: 'Analyzing request...', status: 'complete' },
+                { step: 'Searching schemas & context...', status: 'active' }
+            ]);
+
+            await new Promise(r => setTimeout(r, 500)); // Brief delay for UX
+
+            // Step 2: Processing
+            setThinkingSteps(prev => [
+                ...prev.slice(0, -1),
+                { step: 'Searching schemas & context...', status: 'complete' },
+                { step: 'Generating response...', status: 'active' }
+            ]);
+
             const response = await sendAgentMessage({
                 message: input.trim(),
                 autoMode,
                 history: messages.slice(-10),
                 context: { page: context.name, path: location.pathname }
             });
+
+            // Step 3: Complete
+            setThinkingSteps([]);
 
             if (response.requiresApproval && !autoMode) {
                 setPendingAction(response);
@@ -264,7 +457,12 @@ export default function AgentPanel({ isOpen, onToggle, currentPath }) {
                     actions: response.suggestedActions
                 }]);
             }
+
+            // Auto-save conversation after response
+            setTimeout(saveCurrentConversation, 1000);
+
         } catch (error) {
+            setThinkingSteps([]);
             setMessages(prev => [...prev, {
                 id: Date.now(),
                 role: 'assistant',
@@ -274,6 +472,7 @@ export default function AgentPanel({ isOpen, onToggle, currentPath }) {
             }]);
         } finally {
             setLoading(false);
+            setThinkingSteps([]);
         }
     };
 
@@ -368,6 +567,27 @@ export default function AgentPanel({ isOpen, onToggle, currentPath }) {
                         </div>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <button
+                            onClick={() => setShowHistory(!showHistory)}
+                            title="Chat History"
+                            style={{
+                                background: showHistory ? 'var(--accent-blue)' : 'none',
+                                border: 'none',
+                                color: showHistory ? 'white' : 'var(--text-muted)',
+                                cursor: 'pointer',
+                                fontSize: '14px',
+                                padding: '4px 8px',
+                                borderRadius: '4px'
+                            }}
+                        >📚</button>
+                        <button
+                            onClick={saveCurrentConversation}
+                            title="Save Conversation"
+                            style={{
+                                background: 'none', border: 'none',
+                                color: 'var(--text-muted)', cursor: 'pointer', fontSize: '14px'
+                            }}
+                        >💾</button>
                         <label style={{
                             display: 'flex', alignItems: 'center', gap: '6px',
                             fontSize: '11px', cursor: 'pointer'
@@ -396,6 +616,72 @@ export default function AgentPanel({ isOpen, onToggle, currentPath }) {
                     📍 Viewing <span className="context-page">{context.name}</span>
                 </div>
             </div>
+
+            {/* Chat History Panel */}
+            {showHistory && (
+                <div style={{
+                    padding: '12px',
+                    background: 'var(--bg-card)',
+                    borderBottom: '1px solid var(--border-default)',
+                    maxHeight: '250px',
+                    overflowY: 'auto'
+                }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                        <span style={{ fontWeight: 600, fontSize: '13px' }}>📚 Chat History</span>
+                        <button
+                            onClick={startNewConversation}
+                            style={{
+                                padding: '4px 12px',
+                                background: 'var(--accent-blue)',
+                                border: 'none',
+                                borderRadius: '6px',
+                                color: 'white',
+                                fontSize: '11px',
+                                cursor: 'pointer'
+                            }}
+                        >+ New Chat</button>
+                    </div>
+                    {conversations.length === 0 ? (
+                        <div style={{ color: 'var(--text-muted)', fontSize: '12px', textAlign: 'center', padding: '20px' }}>
+                            No saved conversations yet
+                        </div>
+                    ) : (
+                        conversations.map(conv => (
+                            <div
+                                key={conv.id}
+                                style={{
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center',
+                                    padding: '10px',
+                                    background: currentConversationId === conv.id ? 'var(--bg-tertiary)' : 'var(--bg-secondary)',
+                                    borderRadius: '8px',
+                                    marginBottom: '8px',
+                                    cursor: 'pointer',
+                                    borderLeft: currentConversationId === conv.id ? '3px solid var(--accent-blue)' : '3px solid transparent'
+                                }}
+                                onClick={() => loadConversation(conv.id)}
+                            >
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                    <div style={{ fontSize: '12px', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                        {conv.title}
+                                    </div>
+                                    <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+                                        {conv.messageCount} messages • {new Date(conv.updatedAt).toLocaleDateString()}
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); deleteConv(conv.id); }}
+                                    style={{
+                                        background: 'none', border: 'none',
+                                        color: 'var(--text-muted)', cursor: 'pointer', fontSize: '12px'
+                                    }}
+                                >🗑️</button>
+                            </div>
+                        ))
+                    )}
+                </div>
+            )}
 
             {/* Alerts Card - Shows by default */}
             {showAlerts && (
@@ -455,10 +741,20 @@ export default function AgentPanel({ isOpen, onToggle, currentPath }) {
                                     msg.isPending ? 'rgba(234,179,8,0.15)' : 'var(--bg-card)',
                             border: msg.isPending ? '1px solid var(--accent-yellow)' : 'none'
                         }}>
-                            <div style={{ whiteSpace: 'pre-wrap' }}>{msg.content}</div>
+                            <div
+                                className="markdown-content"
+                                dangerouslySetInnerHTML={{ __html: parseMarkdown(msg.content) }}
+                            />
 
-                            {/* Data Preview */}
-                            {msg.data && (
+
+
+                            {/* Verification Card */}
+                            {msg.data && (msg.data.analysis || msg.data.validation) && (
+                                <VerificationCard data={msg.data} />
+                            )}
+
+                            {/* Data Preview (Fallback if not verification) */}
+                            {msg.data && !msg.data.analysis && !msg.data.validation && (
                                 <div style={{
                                     marginTop: '12px', padding: '10px',
                                     background: 'var(--bg-primary)', borderRadius: '8px',
@@ -501,9 +797,42 @@ export default function AgentPanel({ isOpen, onToggle, currentPath }) {
                 ))}
 
                 {loading && (
-                    <div style={{ padding: '12px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <div className="spinner" style={{ width: '14px', height: '14px' }} />
-                        Thinking...
+                    <div style={{
+                        padding: '16px',
+                        background: 'var(--bg-card)',
+                        borderRadius: '12px',
+                        margin: '8px 12px',
+                        border: '1px solid var(--border-default)'
+                    }}>
+                        <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '10px',
+                            marginBottom: thinkingSteps.length > 0 ? '12px' : 0,
+                            color: 'var(--accent-blue)',
+                            fontWeight: 500,
+                            fontSize: '13px'
+                        }}>
+                            <div className="spinner" style={{ width: '16px', height: '16px' }} />
+                            🧠 Processing...
+                        </div>
+                        {thinkingSteps.map((step, i) => (
+                            <div key={i} style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '8px',
+                                padding: '6px 0',
+                                fontSize: '12px',
+                                color: step.status === 'active' ? 'var(--accent-cyan)' : 'var(--text-muted)',
+                                borderLeft: '2px solid',
+                                borderColor: step.status === 'active' ? 'var(--accent-cyan)' : 'var(--accent-green)',
+                                paddingLeft: '10px',
+                                marginLeft: '8px'
+                            }}>
+                                <span>{step.status === 'active' ? '⏳' : '✅'}</span>
+                                <span>{step.step}</span>
+                            </div>
+                        ))}
                     </div>
                 )}
 

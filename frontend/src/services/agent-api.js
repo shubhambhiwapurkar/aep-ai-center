@@ -43,3 +43,47 @@ export const getAgentHistory = () =>
  */
 export const clearAgentHistory = () =>
     fetchAPI('/agent/history', { method: 'DELETE' });
+
+// ===== CHAT HISTORY (RECALL) =====
+
+/**
+ * Get all saved conversations
+ */
+export const getConversations = () =>
+    fetchAPI('/chat/conversations');
+
+/**
+ * Get a specific conversation by ID
+ */
+export const getConversation = (conversationId) =>
+    fetchAPI(`/chat/conversations/${conversationId}`);
+
+/**
+ * Create a new conversation
+ */
+export const createConversation = (title) =>
+    fetchAPI('/chat/conversations', {
+        method: 'POST',
+        body: JSON.stringify({ title })
+    });
+
+/**
+ * Save messages to a conversation
+ */
+export const saveConversation = (conversationId, messages) =>
+    fetchAPI(`/chat/conversations/${conversationId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ messages })
+    });
+
+/**
+ * Delete a conversation
+ */
+export const deleteConversation = (conversationId) =>
+    fetchAPI(`/chat/conversations/${conversationId}`, { method: 'DELETE' });
+
+/**
+ * Get schema context for agent (field paths, common fields)
+ */
+export const getSchemaContext = () =>
+    fetchAPI('/agent/schema-context');

@@ -90,7 +90,18 @@ export default function Shell({ children }) {
     const [currentSandbox, setCurrentSandbox] = useState(null);
     const [showSandboxDropdown, setShowSandboxDropdown] = useState(false);
     const [isAgentOpen, setIsAgentOpen] = useState(false);
+    const [theme, setTheme] = useState(() => localStorage.getItem('aep_theme') || 'dark');
     const location = useLocation();
+
+    // Apply theme to document
+    useEffect(() => {
+        document.documentElement.setAttribute('data-theme', theme);
+        localStorage.setItem('aep_theme', theme);
+    }, [theme]);
+
+    const toggleTheme = () => {
+        setTheme(prev => prev === 'dark' ? 'light' : 'dark');
+    };
 
     useEffect(() => {
         checkConnectionStatus();
@@ -181,6 +192,7 @@ export default function Shell({ children }) {
             '/sandbox-compare': 'Sandbox Comparison',
             '/ingestion': 'Data Ingestion',
             '/data-prep': 'Data Prep',
+            '/data-lineage': 'Data Lineage',
             '/api-browser': 'API Browser'
         };
         return titles[location.pathname] || 'Dashboard';
@@ -251,6 +263,9 @@ export default function Shell({ children }) {
                         <NavLink to="/data-prep" className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
                             <span className="sidebar-icon-text">🔀</span> {!collapsed && 'Data Prep'}
                         </NavLink>
+                        <NavLink to="/data-lineage" className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
+                            <span className="sidebar-icon-text">🔗</span> {!collapsed && 'Data Lineage'}
+                        </NavLink>
                     </nav>
                 </div>
 
@@ -303,7 +318,12 @@ export default function Shell({ children }) {
             </aside>
 
             {/* Main Content */}
-            <main className="main-content" style={{ gridArea: 'main', marginLeft: 0 }}>
+            <main className="main-content" style={{
+                gridArea: 'main',
+                marginLeft: 0,
+                marginRight: isAgentOpen ? '500px' : 0,
+                transition: 'margin-right 0.3s ease'
+            }}>
                 <header className="header">
                     <div className="header-title">
                         <h1>{getPageTitle()}</h1>
@@ -400,6 +420,15 @@ export default function Shell({ children }) {
                         >
                             <span className="connection-dot"></span>
                             <span>{getConnectionText()}</span>
+                        </button>
+
+                        <button
+                            className="btn-secondary"
+                            onClick={toggleTheme}
+                            style={{ padding: '8px 12px', borderRadius: 'var(--radius-md)', display: 'flex', alignItems: 'center', gap: '6px' }}
+                            title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
+                        >
+                            {theme === 'dark' ? '☀️' : '🌙'}
                         </button>
 
                         <button

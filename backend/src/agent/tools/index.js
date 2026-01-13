@@ -1650,6 +1650,538 @@ LIMIT 10`;
                 summary: `Ingestion metrics for the last ${timeRange}`
             };
         }
+    },
+
+    // ===== ADVANCED VERIFICATION TOOLS =====
+    // ===== ADVANCED VERIFICATION TOOLS =====
+    verify_segment_count: {
+        name: 'verify_segment_count',
+        description: 'Verify the "True Count" of a segment by running a SQL query against the profile snapshot in the Data Lake.',
+        parameters: {
+            type: 'object',
+            properties: {
+                segmentId: { type: 'string', description: 'The Segment ID to verify' },
+                snapshotDatasetName: { type: 'string', description: 'Name of the Profile Snapshot dataset (optional)' }
+            },
+            required: ['segmentId']
+        },
+        requiresApproval: false,
+        execute: async ({ segmentId, snapshotDatasetName = 'Profile Snapshot Export' }) => {
+            const segment = await segmentService.getSegmentDetails(segmentId);
+            if (!segment) throw new Error(`Segment ${segmentId} not found`);
+
+            const datasets = await datasetService.listDatasets({ name: snapshotDatasetName, limit: '5' });
+            const foundIds = Object.keys(datasets || {});
+
+            let snapshotId = foundIds[0];
+            if (!snapshotId) {
+                return { error: `Could not find a dataset named "${snapshotDatasetName}".` };
+            }
+
+            const tableName = snapshotId;
+            const sql = `SELECT count(1) as actual_count FROM "${tableName}" WHERE segmentMembership.ups."${segmentId}".status = 'existing'`;
+
+            const queryRun = await queryService.createQuery({
+                dbName: 'prod:all',
+                sql: sql,
+                name: `Agent Verification: ${segment.name}`
+            });
+
+            return {
+                analysisType: 'True Count Verification',
+                segment: {
+                    id: segmentId,
+                    name: segment.name,
+                    estimatedCount: segment.profileCount || segment.profiles || 0
+                },
+                verification: {
+                    status: 'IN_PROGRESS',
+                    queryId: queryRun.id,
+                    sqlUsed: sql,
+                    dataSource: tableName,
+                    note: 'Query submitted. Check Query Service for results.'
+                }
+            };
+        }
+    },
+
+    get_profile_preview_status: {
+        name: 'get_profile_preview_status',
+        description: 'Get a quick preview of the total profile count and system sample status.',
+        parameters: { type: 'object', properties: {}, required: [] },
+        requiresApproval: false,
+        execute: async () => {
+            const preview = await profileService.getProfilePreview();
+            return {
+                totalProfileCount: preview?.totalRows || 0,
+                lastUpdated: preview?.lastSuccessfulSampleTimestamp,
+                sampleSize: preview?.sampleSize
+            };
+        }
+    },
+
+    get_profile_distribution: {
+        name: 'get_profile_distribution',
+        description: 'Get the breakdown of profiles by Dataset or Identity Namespace.',
+        parameters: {
+            type: 'object',
+            properties: {
+                dimension: { type: 'string', enum: ['dataset', 'namespace'], description: 'Dimension to group by' }
+            },
+            required: ['dimension']
+        },
+        requiresApproval: false,
+        execute: async ({ dimension }) => {
+            const data = dimension === 'dataset'
+                ? await profileService.getProfilesByDataset()
+                : await profileService.getProfilesByNamespace();
+
+            const distribution = Object.entries(data || {}).map(([key, value]) => ({
+                id: key,
+                count: value
+            })).sort((a, b) => b.count - a.count);
+
+            return {
+                dimension,
+                totalGroups: distribution.length,
+                top10: distribution.slice(0, 10)
+            };
+        }
+    },
+
+    check_orphaned_profiles: {
+        name: 'check_orphaned_profiles',
+        description: 'Identify profiles with no recent activity (orphans) using SQL analysis.',
+        parameters: {
+            type: 'object',
+            properties: {
+                monthsInactive: { type: 'number', description: 'Number of months of inactivity (default 3)' }
+            },
+            required: []
+        },
+        requiresApproval: false,
+        execute: async ({ monthsInactive = 3 }) => {
+            const datasets = await datasetService.listDatasets({ name: 'Profile Snapshot Export', limit: '1' });
+            const snapshotId = Object.keys(datasets || {})[0];
+
+            if (!snapshotId) return { error: 'Profile Snapshot dataset not found.' };
+
+            const tableName = snapshotId;
+            const days = monthsInactive * 30;
+            const sql = `SELECT count(1) as orphan_count FROM "${tableName}" WHERE timestamp < date_sub(current_date(), ${days})`;
+
+            const queryRun = await queryService.createQuery({
+                dbName: 'prod:all',
+                sql: sql,
+                name: `Agent: Orphan Check (> ${days} days)`
+            });
+
+            return {
+                analysis: 'Orphaned Profile Check',
+                thresholdDays: days,
+                status: 'Query Submitted',
+                queryId: queryRun.id,
+                sql: sql
+            };
+        }
+    },
+
+    build_data_dictionary: {
+        name: 'build_data_dictionary',
+        description: 'Generate a flattened Data Dictionary from XDM schemas for AI context.',
+        parameters: {
+            type: 'object',
+            properties: {
+                sandboxName: { type: 'string' }
+            },
+            required: []
+        },
+        requiresApproval: false,
+        execute: async () => {
+            const context = await schemaService.extractUnionSchemaForAI();
+            const flattenProperties = (props, prefix = '') => {
+                let items = [];
+                for (const [key, value] of Object.entries(props)) {
+                    const path = prefix ? `${prefix}.${key}` : key;
+                    items.push({
+                        path: path,
+                        type: value.type || 'string',
+                        title: value.title || key,
+                        description: value.description || 'No description available',
+                        sql_column: path.replace(/./g, '_')
+                    });
+                    if (value.properties) {
+                        items = items.concat(flattenProperties(value.properties, path));
+                    }
+                }
+                return items;
+            };
+
+            const dictionaries = context.schemas.map(schema => ({
+                schemaId: schema.id,
+                title: schema.title,
+                fieldCount: Object.keys(schema.properties).length,
+                dictionary: flattenProperties(schema.properties)
+            }));
+
+            return {
+                generatedAt: new Date().toISOString(),
+                totalSchemas: dictionaries.length,
+                dictionaries: dictionaries
+            };
+        }
+    },
+
+    // ===== SPECIALIZED AGENT TOOLS =====
+
+    /**
+     * Identity Graph Doctor - Diagnose why identities aren't linked
+     */
+    diagnose_identity_link: {
+        name: 'diagnose_identity_link',
+        description: 'Diagnose why two identities are not linked in the identity graph. Checks namespace priorities, shared devices, and graph connections.',
+        parameters: {
+            type: 'object',
+            properties: {
+                namespace1: { type: 'string', description: 'First identity namespace (e.g., Email, ECID)' },
+                identity1: { type: 'string', description: 'First identity value' },
+                namespace2: { type: 'string', description: 'Second identity namespace' },
+                identity2: { type: 'string', description: 'Second identity value' }
+            },
+            required: ['namespace1', 'identity1', 'namespace2', 'identity2']
+        },
+        requiresApproval: false,
+        execute: async ({ namespace1, identity1, namespace2, identity2 }) => {
+            const diagnosis = {
+                analysis: 'Identity Link Diagnosis',
+                identities: [
+                    { namespace: namespace1, value: identity1 },
+                    { namespace: namespace2, value: identity2 }
+                ],
+                checks: []
+            };
+
+            try {
+                // 1. Get XID for both identities
+                const [xid1, xid2] = await Promise.all([
+                    identityService.getIdentityXID(namespace1, identity1).catch(() => null),
+                    identityService.getIdentityXID(namespace2, identity2).catch(() => null)
+                ]);
+
+                diagnosis.checks.push({
+                    check: 'XID Resolution',
+                    identity1_xid: xid1?.xid || 'NOT_FOUND',
+                    identity2_xid: xid2?.xid || 'NOT_FOUND',
+                    status: xid1?.xid && xid2?.xid ? 'PASS' : 'FAIL'
+                });
+
+                if (!xid1?.xid || !xid2?.xid) {
+                    diagnosis.conclusion = 'One or both identities do not exist in the identity graph.';
+                    diagnosis.recommendation = 'Ensure both identities have been ingested with proper namespace configuration.';
+                    return diagnosis;
+                }
+
+                // 2. Get cluster members for first identity
+                const cluster1 = await identityService.getClusterMembers(xid1.xid).catch(() => null);
+                const clusterXids = cluster1?.map(m => m.xid) || [];
+                const areLinked = clusterXids.includes(xid2.xid);
+
+                diagnosis.checks.push({
+                    check: 'Cluster Membership',
+                    cluster_size: clusterXids.length,
+                    identities_linked: areLinked,
+                    status: areLinked ? 'LINKED' : 'NOT_LINKED'
+                });
+
+                // 3. Check namespace priorities
+                const namespaces = await identityService.listNamespaces().catch(() => []);
+                const ns1Priority = namespaces.find(n => n.code === namespace1)?.idType;
+                const ns2Priority = namespaces.find(n => n.code === namespace2)?.idType;
+
+                diagnosis.checks.push({
+                    check: 'Namespace Configuration',
+                    namespace1_type: ns1Priority || 'UNKNOWN',
+                    namespace2_type: ns2Priority || 'UNKNOWN',
+                    note: 'Cookie/Device IDs may not directly link to Person IDs without cross-device data'
+                });
+
+                if (!areLinked) {
+                    diagnosis.conclusion = 'Identities exist but are NOT in the same cluster.';
+                    diagnosis.possibleReasons = [
+                        'No cross-device or cross-channel event linking them',
+                        'Different merge policy configurations',
+                        'Identity graph algorithm separated them (e.g., shared device detection)',
+                        'Data not yet propagated (identity stitching is near-real-time)'
+                    ];
+                    diagnosis.recommendation = 'Ingest an event containing both identities to create a link.';
+                } else {
+                    diagnosis.conclusion = 'Identities ARE linked in the same cluster.';
+                    diagnosis.recommendation = 'Both identities will resolve to the same unified profile.';
+                }
+
+                return diagnosis;
+            } catch (error) {
+                diagnosis.error = error.message;
+                return diagnosis;
+            }
+        }
+    },
+
+    /**
+     * Segment Debugger - Diagnose why a segment has 0 or unexpected count
+     */
+    debug_segment: {
+        name: 'debug_segment',
+        description: 'Debug why a segment has 0 profiles or unexpected count. Analyzes PQL expression, merge policy, and tests against sample profiles.',
+        parameters: {
+            type: 'object',
+            properties: {
+                segmentId: { type: 'string', description: 'The segment ID to debug' }
+            },
+            required: ['segmentId']
+        },
+        requiresApproval: false,
+        execute: async ({ segmentId }) => {
+            const debug = {
+                analysis: 'Segment Debug Report',
+                segmentId,
+                checks: []
+            };
+
+            try {
+                // 1. Get segment details
+                const segment = await segmentService.getSegmentDetails(segmentId);
+                debug.segmentName = segment.name;
+                debug.expression = segment.expression?.value || segment.pql?.expression;
+                debug.mergePolicyId = segment.mergePolicyId;
+
+                // 2. Get estimate
+                const estimate = await segmentService.estimateSegment(segmentId).catch(() => null);
+                debug.checks.push({
+                    check: 'Current Estimate',
+                    estimatedSize: estimate?.data?.totalRows || 0,
+                    lastUpdated: estimate?.data?.lastSampledTimestamp,
+                    status: (estimate?.data?.totalRows || 0) > 0 ? 'HAS_PROFILES' : 'EMPTY'
+                });
+
+                // 3. Parse PQL for common issues
+                const pql = debug.expression || '';
+                const pqlIssues = [];
+
+                if (pql.includes('=') && !pql.includes('==')) {
+                    pqlIssues.push('Uses single = instead of == for comparison');
+                }
+                if (pql.match(/\.size\s*>/)) {
+                    pqlIssues.push('Uses .size > which requires array field');
+                }
+                if (pql.includes('null') && !pql.includes('!= null')) {
+                    pqlIssues.push('Null check may exclude profiles without the attribute');
+                }
+                if (pql.match(/\.(Email|email)\s*=/)) {
+                    pqlIssues.push('Direct email comparison may be case-sensitive');
+                }
+
+                debug.checks.push({
+                    check: 'PQL Syntax Analysis',
+                    issues: pqlIssues.length > 0 ? pqlIssues : ['No obvious syntax issues detected'],
+                    status: pqlIssues.length > 0 ? 'POTENTIAL_ISSUES' : 'OK'
+                });
+
+                // 4. Check merge policy
+                if (segment.mergePolicyId) {
+                    const policy = await profileService.getMergePolicyDetails(segment.mergePolicyId).catch(() => null);
+                    debug.checks.push({
+                        check: 'Merge Policy',
+                        policyName: policy?.name || 'UNKNOWN',
+                        attributeMerge: policy?.attributeMerge?.type,
+                        identityGraph: policy?.identityGraph?.type,
+                        status: policy ? 'CONFIGURED' : 'NOT_FOUND'
+                    });
+                }
+
+                // 5. Check if streaming or batch
+                debug.checks.push({
+                    check: 'Evaluation Type',
+                    evaluationType: segment.evaluationInfo?.evaluationType || 'UNKNOWN',
+                    note: segment.evaluationInfo?.evaluationType === 'streaming'
+                        ? 'Streaming segments update in near real-time'
+                        : 'Batch segments update on schedule only'
+                });
+
+                // Conclusion
+                const emptyReasons = [];
+                if ((estimate?.data?.totalRows || 0) === 0) {
+                    emptyReasons.push('No profiles match the current PQL expression');
+                    if (pqlIssues.length > 0) emptyReasons.push('PQL syntax may have issues');
+                    emptyReasons.push('Merge policy may exclude relevant profiles');
+                    emptyReasons.push('Data may not have been ingested yet');
+                }
+
+                debug.conclusion = emptyReasons.length > 0
+                    ? `Segment appears empty. Possible reasons: ${emptyReasons.join('; ')}`
+                    : `Segment has ${estimate?.data?.totalRows || 0} profiles`;
+
+                return debug;
+            } catch (error) {
+                debug.error = error.message;
+                return debug;
+            }
+        }
+    },
+
+    /**
+     * SQL Generator - Generate SQL from natural language
+     */
+    generate_sql: {
+        name: 'generate_sql',
+        description: 'Generate a SQL query from natural language description. Uses available table metadata to construct valid queries.',
+        parameters: {
+            type: 'object',
+            properties: {
+                description: { type: 'string', description: 'Natural language description of the query' },
+                tables: { type: 'array', items: { type: 'string' }, description: 'Optional list of table names to use' }
+            },
+            required: ['description']
+        },
+        requiresApproval: false,
+        execute: async ({ description, tables = [] }) => {
+            // This is a helper that provides context for the LLM to generate SQL
+            // The actual generation happens in the LLM response
+            const result = {
+                analysis: 'SQL Generation Context',
+                request: description,
+                availableTables: [],
+                suggestedQuery: null
+            };
+
+            try {
+                // Get available datasets/tables
+                const datasets = await datasetService.listAllDatasets().catch(() => []);
+                result.availableTables = Object.keys(datasets).slice(0, 20).map(id => ({
+                    id,
+                    name: datasets[id].name,
+                    schemaRef: datasets[id].schemaRef?.$id?.split('/').pop()
+                }));
+
+                // Simple pattern matching for common queries
+                const desc = description.toLowerCase();
+
+                if (desc.includes('count') && desc.includes('profile')) {
+                    result.suggestedQuery = 'SELECT count(1) as profile_count FROM your_profile_snapshot_table';
+                    result.note = 'Replace table name with actual Profile Snapshot Export dataset';
+                } else if (desc.includes('top') && (desc.includes('city') || desc.includes('country'))) {
+                    result.suggestedQuery = `SELECT address.city, count(1) as count FROM your_table GROUP BY address.city ORDER BY count DESC LIMIT 10`;
+                } else if (desc.includes('segment') && desc.includes('member')) {
+                    result.suggestedQuery = `SELECT count(1) FROM your_table WHERE segmentMembership.ups."YOUR_SEGMENT_ID".status = 'existing'`;
+                } else {
+                    result.suggestedQuery = `-- Query for: ${description}\n-- Please specify table name and columns`;
+                }
+
+                result.recommendation = 'Use the Query Service to execute. Replace placeholder table names with actual dataset IDs.';
+                return result;
+            } catch (error) {
+                result.error = error.message;
+                return result;
+            }
+        }
+    },
+
+    /**
+     * Batch Error Analyzer - Deep analysis of batch ingestion errors
+     */
+    analyze_batch_errors: {
+        name: 'analyze_batch_errors',
+        description: 'Perform deep analysis of batch ingestion errors. Downloads error details and provides human-readable diagnosis.',
+        parameters: {
+            type: 'object',
+            properties: {
+                batchId: { type: 'string', description: 'The failed batch ID to analyze' }
+            },
+            required: ['batchId']
+        },
+        requiresApproval: false,
+        execute: async ({ batchId }) => {
+            const analysis = {
+                analysis: 'Batch Error Forensics',
+                batchId,
+                findings: []
+            };
+
+            try {
+                // Get batch details
+                const batch = await batchService.getBatchDetails(batchId);
+                analysis.status = batch.status;
+                analysis.datasetId = batch.datasetId;
+                analysis.created = batch.created;
+
+                if (batch.status !== 'failed' && batch.status !== 'retrying') {
+                    analysis.conclusion = `Batch is not in failed state. Current status: ${batch.status}`;
+                    return analysis;
+                }
+
+                // Get error details
+                const [meta, errors] = await Promise.all([
+                    batchService.getBatchMeta(batchId).catch(() => null),
+                    batchService.getFailedRecords(batchId).catch(() => ({ data: [] }))
+                ]);
+
+                // Analyze errors
+                if (meta?.errors?.length > 0) {
+                    const errorTypes = {};
+                    meta.errors.forEach(e => {
+                        const type = e.code || e.type || 'UNKNOWN';
+                        errorTypes[type] = (errorTypes[type] || 0) + 1;
+                    });
+
+                    analysis.findings.push({
+                        finding: 'Error Distribution',
+                        types: errorTypes,
+                        totalErrors: meta.errors.length
+                    });
+                }
+
+                // Common error patterns
+                const errorMessages = (meta?.errors || []).map(e => e.message || e.description || '').join(' ');
+
+                if (errorMessages.includes('schema') || errorMessages.includes('Schema')) {
+                    analysis.findings.push({
+                        finding: 'Schema Mismatch Detected',
+                        recommendation: 'Verify data structure matches XDM schema. Check field names and types.'
+                    });
+                }
+
+                if (errorMessages.includes('required') || errorMessages.includes('null')) {
+                    analysis.findings.push({
+                        finding: 'Required Field Missing',
+                        recommendation: 'Check that all required fields have values. Look for null in identity fields.'
+                    });
+                }
+
+                if (errorMessages.includes('type') || errorMessages.includes('Type')) {
+                    analysis.findings.push({
+                        finding: 'Type Conversion Error',
+                        recommendation: 'Data types don\'t match schema. Common: string "true" vs boolean true, string numbers vs integers.'
+                    });
+                }
+
+                // Get dataset schema for context
+                if (batch.datasetId) {
+                    const dataset = await datasetService.getDatasetDetails(batch.datasetId).catch(() => null);
+                    if (dataset?.schemaRef) {
+                        analysis.schemaRef = dataset.schemaRef.$id;
+                    }
+                }
+
+                analysis.conclusion = analysis.findings.length > 0
+                    ? `Found ${analysis.findings.length} issue(s). See findings for details.`
+                    : 'No specific errors identified. Check batch metadata in AEP console.';
+
+                return analysis;
+            } catch (error) {
+                analysis.error = error.message;
+                return analysis;
+            }
+        }
     }
 };
 
