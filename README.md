@@ -1,4 +1,4 @@
-# AEP AI Center (Enterprise Monitoring Agent)
+# AEP AI Center (Monitoring + Debug + Developer Agent)
 
 **AEP AI Center** is a next-generation "Full Agent" system for Adobe Experience Platform. It transforms the traditional monitoring dashboard into an intelligent Command Center where an AI Copilot proactively monitors system health, diagnoses ingestion failures, and executes complex tasks via natural language.
 
