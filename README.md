@@ -13,6 +13,7 @@
 
 ### 🎯 Command Center Dashboard
 - **Real-time System Health** - Live connection status, uptime monitoring, and service health matrix
+- **Unified Observability** - Integrated metrics, logs, and trace monitoring in a single view
 - **Daily AI Briefings** - Automated system health analysis with AI-generated insights
 - **Smart Alerts** - Proactive issue detection with actionable recommendations
 - **Data Heartbeat** - 24-hour activity visualization with success/failure tracking
@@ -26,7 +27,7 @@
 
 ### 📊 Data Management
 - **Batch Monitor** - Track ingestion batches with auto-analysis for failures
-- **Data Ingestion** - File upload with preview, validation, and streaming with lag indicators
+- **Data Ingestion** - File upload with preview, validation, and full pagination support for thousands of datasets
 - **Data Flows** - Flow management with destination dry-run validation
 - **Data Lineage** - Interactive visualization of data flow from sources to destinations
 - **Data Prep** - Visual field mapping and transformation builder
@@ -97,7 +98,7 @@ GEMINI_MODEL=gemini-2.0-flash
 
 # Optional: Alternative Models
 # GEMINI_MODEL=gemini-2.0-flash-lite (faster, less capable)
-# GEMINI_MODEL=gemini-2.5-pro (most capable, slower)
+# GEMINI_MODEL=gemini-3-pro (most capable, slower)
 ```
 
 ### Installation

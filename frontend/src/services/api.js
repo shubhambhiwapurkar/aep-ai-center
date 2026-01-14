@@ -1,12 +1,29 @@
 const API_BASE = 'http://localhost:3001/api';
 
+// ===== GLOBAL SANDBOX STATE =====
+let currentSandbox = localStorage.getItem('aep_sandbox') || null;
+
+export const setCurrentSandbox = (sandbox) => {
+    currentSandbox = sandbox;
+    localStorage.setItem('aep_sandbox', sandbox);
+};
+
+export const getCurrentSandboxName = () => currentSandbox;
+
 async function fetchAPI(endpoint, options = {}) {
+    const headers = {
+        'Content-Type': 'application/json',
+        ...options.headers
+    };
+
+    // Add sandbox header if set
+    if (currentSandbox) {
+        headers['x-sandbox-name'] = currentSandbox;
+    }
+
     const response = await fetch(`${API_BASE}${endpoint}`, {
         ...options,
-        headers: {
-            'Content-Type': 'application/json',
-            ...options.headers
-        }
+        headers
     });
 
     if (!response.ok) {
@@ -16,6 +33,34 @@ async function fetchAPI(endpoint, options = {}) {
 
     return response.json();
 }
+
+// Sandbox-specific fetch (for cross-sandbox queries)
+async function fetchAPIWithSandbox(endpoint, sandbox, options = {}) {
+    const headers = {
+        'Content-Type': 'application/json',
+        'x-sandbox-name': sandbox,
+        ...options.headers
+    };
+
+    const response = await fetch(`${API_BASE}${endpoint}`, {
+        ...options,
+        headers
+    });
+
+    if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: 'Network error' }));
+        throw new Error(error.error || `API Error: ${response.status}`);
+    }
+
+    return response.json();
+}
+
+// ===== SANDBOX API =====
+export const getActiveSandboxInfo = () => fetchAPI('/sandbox/current');
+export const switchSandbox = (sandbox) => fetchAPI('/sandbox/switch', {
+    method: 'POST',
+    body: JSON.stringify({ sandbox })
+});
 
 // ===== CONNECTION =====
 export const checkConnection = () => fetchAPI('/connection');
@@ -50,6 +95,9 @@ export const getSchemas = (container = 'tenant', filters = {}) => {
     const params = new URLSearchParams({ container, ...filters }).toString();
     return fetchAPI(`/schemas?${params}`);
 };
+// Get ALL schemas with pagination (for Schema Registry)
+export const getAllSchemas = (container = 'tenant') =>
+    fetchAPI(`/schemas/all?container=${container}`);
 export const getSchemaStats = () => fetchAPI('/schemas/stats');
 export const getRegistryStats = () => fetchAPI('/schemas/registry-stats');
 export const getUnionSchemas = () => fetchAPI('/schemas/unions');

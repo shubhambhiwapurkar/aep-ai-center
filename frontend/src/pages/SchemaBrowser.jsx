@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
-    getSchemas, getSchemaStats, getSchemaDetails, getSchemaSampleData,
+    getSchemas, getAllSchemas, getSchemaStats, getSchemaDetails, getSchemaSampleData,
     exportSchema, getFieldGroups, getClasses, getDataTypes, getUnionSchemas,
     extractSchemaForAI, getBehaviors, getDescriptors, generateDataDictionary
 } from '../services/api';
@@ -28,6 +28,10 @@ export default function SchemaBrowser() {
     const [dictionary, setDictionary] = useState(null);
     const [generatingDict, setGeneratingDict] = useState(false);
 
+    // Track real counts from paginated API
+    const [tenantCount, setTenantCount] = useState(0);
+    const [globalCount, setGlobalCount] = useState(0);
+
     useEffect(() => {
         loadData();
     }, [activeCategory]);
@@ -40,11 +44,18 @@ export default function SchemaBrowser() {
             switch (activeCategory) {
                 case 'tenant':
                 case 'global':
+                    // Use getAllSchemas to get ALL schemas with pagination
                     const [schemaData, statsData] = await Promise.all([
-                        getSchemas(activeCategory).catch(() => ({ results: [] })),
+                        getAllSchemas(activeCategory).catch(() => ({ results: [], total: 0 })),
                         activeCategory === 'tenant' ? getSchemaStats().catch(() => null) : Promise.resolve(null)
                     ]);
                     data = schemaData.results || [];
+                    // Save real count
+                    if (activeCategory === 'tenant') {
+                        setTenantCount(data.length);
+                    } else {
+                        setGlobalCount(data.length);
+                    }
                     if (statsData) setStats(statsData);
                     break;
                 case 'unions':
@@ -205,7 +216,7 @@ export default function SchemaBrowser() {
             {/* Stats */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '16px', marginBottom: '24px' }}>
                 <div className="stat-card">
-                    <div className="stat-card-value">{stats?.totalSchemas || items.length}</div>
+                    <div className="stat-card-value">{tenantCount || items.length || stats?.totalSchemas || 0}</div>
                     <div className="stat-card-label">SCHEMAS</div>
                 </div>
                 <div className="stat-card">

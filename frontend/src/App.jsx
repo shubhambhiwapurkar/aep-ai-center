@@ -3,6 +3,7 @@ import Shell from './components/Shell';
 import Dashboard from './pages/Dashboard';
 import BatchMonitor from './pages/BatchMonitor';
 import SchemaBrowser from './pages/SchemaBrowser';
+import SchemaDictionary from './pages/SchemaDictionary';
 import Datasets from './pages/Datasets';
 import Identities from './pages/Identities';
 import Queries from './pages/Queries';
@@ -13,7 +14,6 @@ import APIBrowser from './pages/APIBrowser';
 import Policies from './pages/Policies';
 import AuditLog from './pages/AuditLog';
 import Privacy from './pages/Privacy';
-import Observability from './pages/Observability';
 import Sandboxes from './pages/Sandboxes';
 import SandboxCompare from './pages/SandboxCompare';
 import DataIngestion from './pages/DataIngestion';
@@ -29,6 +29,7 @@ function App() {
           <Route path="/" element={<Dashboard />} />
           <Route path="/batches" element={<BatchMonitor />} />
           <Route path="/schemas" element={<SchemaBrowser />} />
+          <Route path="/schema-dictionary" element={<SchemaDictionary />} />
           <Route path="/datasets" element={<Datasets />} />
           <Route path="/identities" element={<Identities />} />
           <Route path="/profiles" element={<Profiles />} />
@@ -38,7 +39,6 @@ function App() {
           <Route path="/policies" element={<Policies />} />
           <Route path="/audit" element={<AuditLog />} />
           <Route path="/privacy" element={<Privacy />} />
-          <Route path="/observability" element={<Observability />} />
           <Route path="/sandboxes" element={<Sandboxes />} />
           <Route path="/sandbox-compare" element={<SandboxCompare />} />
           <Route path="/ingestion" element={<DataIngestion />} />

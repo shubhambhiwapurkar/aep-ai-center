@@ -12,3 +12,15 @@ export const config = {
     scopes: process.env.SCOPES || 'openid,AdobeID,read_organizations',
     port: process.env.PORT || 3001
 };
+
+// Allow dynamic sandbox switching
+export function setSandboxName(sandbox) {
+    if (sandbox) {
+        config.sandboxName = sandbox;
+        console.log(`[Config] Sandbox switched to: ${sandbox}`);
+    }
+}
+
+export function getSandboxName() {
+    return config.sandboxName;
+}
