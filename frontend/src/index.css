@@ -2841,7 +2841,7 @@ body {
 
 /* Agent Panel Open State - Adjust main content */
 .app-shell.agent-open .main-content {
-  width: calc(100% - 500px);
+  width: calc(100% - 200px);
   transition: width 0.3s ease;
 }
 

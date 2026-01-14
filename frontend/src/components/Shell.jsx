@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { checkConnection, refreshConnection, getSandboxes, getCurrentSandbox } from '../services/api';
+import { checkConnection, refreshConnection, getSandboxes, getCurrentSandbox, switchSandbox, setCurrentSandbox as setGlobalSandbox } from '../services/api';
 import AgentPanel from './AgentPanel';
 
 // Icons as simple SVG components
@@ -87,8 +87,9 @@ export default function Shell({ children }) {
     const [connection, setConnection] = useState({ connected: false, checking: true });
     const [currentTime, setCurrentTime] = useState(new Date());
     const [sandboxes, setSandboxes] = useState([]);
-    const [currentSandbox, setCurrentSandbox] = useState(null);
+    const [currentSandboxState, setCurrentSandboxState] = useState(null);
     const [showSandboxDropdown, setShowSandboxDropdown] = useState(false);
+    const [switchingTo, setSwitchingTo] = useState(null);
     const [isAgentOpen, setIsAgentOpen] = useState(false);
     const [theme, setTheme] = useState(() => localStorage.getItem('aep_theme') || 'dark');
     const location = useLocation();
@@ -117,19 +118,41 @@ export default function Shell({ children }) {
                 getCurrentSandbox().catch(() => null)
             ]);
             setSandboxes(sbList?.sandboxes || []);
-            setCurrentSandbox(current);
+            setCurrentSandboxState(current);
+            // Initialize global sandbox from stored preference
+            const storedSandbox = localStorage.getItem('aep_sandbox');
+            if (storedSandbox) {
+                setGlobalSandbox(storedSandbox);
+            } else if (current?.name) {
+                setGlobalSandbox(current.name);
+            }
         } catch (e) {
             console.error('Failed to load sandboxes', e);
         }
     };
 
-    const handleSandboxSwitch = (sandbox) => {
-        // Store sandbox in localStorage and reload
-        localStorage.setItem('aep_sandbox', sandbox.name);
-        setCurrentSandbox(sandbox);
-        setShowSandboxDropdown(false);
-        // Notify user - in real implementation this would change backend context
-        alert(`Switched to sandbox: ${sandbox.name}\n\nNote: Full sandbox switching requires backend configuration update.`);
+    const handleSandboxSwitch = async (sandbox) => {
+        setSwitchingTo(sandbox.name);
+        try {
+            // Call backend to switch sandbox
+            await switchSandbox(sandbox.name);
+
+            // Update local state
+            setGlobalSandbox(sandbox.name);
+            setCurrentSandboxState(sandbox);
+            setShowSandboxDropdown(false);
+
+            // Refresh connection to verify new sandbox
+            await checkConnectionStatus();
+
+            // Reload page to refresh all data with new sandbox context
+            window.location.reload();
+        } catch (e) {
+            console.error('Failed to switch sandbox', e);
+            alert(`Failed to switch sandbox: ${e.message}`);
+        } finally {
+            setSwitchingTo(null);
+        }
     };
 
     const checkConnectionStatus = async () => {
@@ -187,7 +210,6 @@ export default function Shell({ children }) {
             '/policies': 'Policies & Governance',
             '/privacy': 'Privacy Jobs',
             '/audit': 'Audit Log',
-            '/observability': 'Observability',
             '/sandboxes': 'Sandboxes',
             '/sandbox-compare': 'Sandbox Comparison',
             '/ingestion': 'Data Ingestion',
@@ -203,7 +225,13 @@ export default function Shell({ children }) {
             {/* Sidebar */}
             <aside className={`sidebar ${collapsed ? 'collapsed' : ''}`} style={{ gridArea: 'nav' }}>
                 <div className="sidebar-logo">
-                    <div className="sidebar-logo-icon">AE</div>
+                    <div className="sidebar-logo-icon" style={{ background: 'none', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <rect width="40" height="40" rx="8" fill="#FA0F00" />
+                            <path d="M24 29H30V9H24.5L20.5 20L16.5 9H11V29H15.5L18.5 19L21.5 29H24ZM18.5 19L20.5 13.5L22.5 19H18.5Z" fill="white" fillOpacity="0.2" />
+                            <path d="M23 7H29V29H24.5L20 17L15.5 29H11V7H17L20 15L23 7Z" fill="white" />
+                        </svg>
+                    </div>
                     {!collapsed && (
                         <div className="sidebar-logo-text">
                             <h1>AEP MONITOR</h1>
@@ -218,14 +246,14 @@ export default function Shell({ children }) {
                         <NavLink to="/" className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
                             <DashboardIcon /> {!collapsed && 'Dashboard'}
                         </NavLink>
-                        <NavLink to="/observability" className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
-                            <span className="sidebar-icon-text">📊</span> {!collapsed && 'Observability'}
-                        </NavLink>
                         <NavLink to="/batches" className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
                             <BatchIcon /> {!collapsed && 'Batch Monitor'}
                         </NavLink>
                         <NavLink to="/schemas" className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
                             <SchemaIcon /> {!collapsed && 'Schema Registry'}
+                        </NavLink>
+                        <NavLink to="/schema-dictionary" className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
+                            <span className="sidebar-icon-text">📚</span> {!collapsed && 'Schema Dictionary'}
                         </NavLink>
                         <NavLink to="/datasets" className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
                             <DatasetIcon /> {!collapsed && 'Datasets'}
@@ -350,7 +378,7 @@ export default function Shell({ children }) {
                                 }}
                             >
                                 <span>📦</span>
-                                <span>{currentSandbox?.name || 'Select Sandbox'}</span>
+                                <span>{currentSandboxState?.name || connection.sandboxName || 'Select Sandbox'}</span>
                                 <span style={{ fontSize: '10px', opacity: 0.5 }}>▼</span>
                             </button>
 
@@ -381,11 +409,11 @@ export default function Shell({ children }) {
                                                 display: 'flex',
                                                 alignItems: 'center',
                                                 gap: '10px',
-                                                background: currentSandbox?.name === sb.name ? 'var(--bg-tertiary)' : 'transparent',
-                                                borderLeft: currentSandbox?.name === sb.name ? '2px solid var(--accent-blue)' : '2px solid transparent'
+                                                background: currentSandboxState?.name === sb.name ? 'var(--bg-tertiary)' : 'transparent',
+                                                borderLeft: currentSandboxState?.name === sb.name ? '2px solid var(--accent-blue)' : '2px solid transparent'
                                             }}
                                             onMouseOver={(e) => e.currentTarget.style.background = 'var(--bg-secondary)'}
-                                            onMouseOut={(e) => e.currentTarget.style.background = currentSandbox?.name === sb.name ? 'var(--bg-tertiary)' : 'transparent'}
+                                            onMouseOut={(e) => e.currentTarget.style.background = currentSandboxState?.name === sb.name ? 'var(--bg-tertiary)' : 'transparent'}
                                         >
                                             <span>{sb.type === 'production' ? '🏭' : '🔧'}</span>
                                             <div>
@@ -394,7 +422,7 @@ export default function Shell({ children }) {
                                                     {sb.type} • {sb.region || 'VA7'}
                                                 </div>
                                             </div>
-                                            {currentSandbox?.name === sb.name && (
+                                            {currentSandboxState?.name === sb.name && (
                                                 <span style={{ marginLeft: 'auto', color: 'var(--accent-green)', fontSize: '12px' }}>✓</span>
                                             )}
                                         </div>

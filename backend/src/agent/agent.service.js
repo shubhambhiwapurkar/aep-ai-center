@@ -5,12 +5,112 @@
  */
 import * as llm from './llm.service.js';
 import * as toolRegistry from './tools/index.js';
+import * as schemaService from '../services/schema.service.js';
 
 // In-memory chat history (per session)
 let chatHistory = [];
 
-// Enhanced system prompt with creation capabilities
-const SYSTEM_PROMPT = `You are an expert AI assistant for Adobe Experience Platform (AEP). You help users explore, analyze, AND create/manage their AEP resources.
+// Cached schema context for AI
+let schemaContext = null;
+let schemaContextLoaded = false;
+
+/**
+ * Load schema context for AI (field paths, common fields)
+ */
+async function loadSchemaContext() {
+    if (schemaContextLoaded) return schemaContext;
+
+    try {
+        console.log('[Agent] Loading schema context for AI...');
+        const dictionary = await schemaService.generateDataDictionary();
+
+        // Extract common profile fields for context
+        const commonPatterns = ['email', 'gender', 'birthDate', 'age', 'firstName', 'lastName', 'phone', 'address', 'city', 'country', 'loyalty', 'status', 'tier'];
+        const commonFields = dictionary?.fields?.filter(f =>
+            commonPatterns.some(p => f.path?.toLowerCase().includes(p.toLowerCase()))
+        ).slice(0, 30) || [];
+
+        schemaContext = {
+            totalSchemas: dictionary?.totalSchemas || 0,
+            totalFields: dictionary?.fields?.length || 0,
+            commonFields: commonFields.map(f => ({
+                path: f.path,
+                type: f.type,
+                title: f.title,
+                enum: f.enum?.slice(0, 5)
+            }))
+        };
+
+        schemaContextLoaded = true;
+        console.log(`[Agent] Schema context loaded: ${schemaContext.totalFields} fields, ${schemaContext.commonFields.length} common fields`);
+        return schemaContext;
+    } catch (e) {
+        console.error('[Agent] Failed to load schema context:', e.message);
+        return null;
+    }
+}
+
+// Initialize schema context on module load
+loadSchemaContext().catch(console.error);
+
+// Union Profile Schema context (for PQL queries)
+let profileSchemaContext = null;
+
+/**
+ * Load Union Profile Schema context for PQL (loaded separately)
+ */
+async function loadProfileSchemaContext() {
+    if (profileSchemaContext) return profileSchemaContext;
+
+    try {
+        console.log('[Agent] Loading union profile schema for PQL...');
+        profileSchemaContext = await schemaService.getUnionProfileSchemaForPQL();
+        console.log(`[Agent] Profile schema loaded: ${profileSchemaContext?.totalFields || 0} fields, ${profileSchemaContext?.commonAttributes?.length || 0} common attributes`);
+        return profileSchemaContext;
+    } catch (e) {
+        console.error('[Agent] Failed to load profile schema:', e.message);
+        return null;
+    }
+}
+
+// Load profile schema context after general context
+loadProfileSchemaContext().catch(console.error);
+
+// Build dynamic system prompt with schema context
+function buildSystemPrompt() {
+    let schemaSection = '';
+    let pqlSection = '';
+
+    // General schema fields
+    if (schemaContext && schemaContext.commonFields.length > 0) {
+        const fieldList = schemaContext.commonFields.map(f =>
+            `- ${f.path} (${f.type})${f.enum ? ` [values: ${f.enum.join(', ')}]` : ''}`
+        ).join('\n');
+
+        schemaSection = `
+AVAILABLE SCHEMA FIELDS (Common Profile Attributes):
+${fieldList}
+`;
+    }
+
+    // PQL-specific profile schema fields
+    if (profileSchemaContext && profileSchemaContext.commonAttributes?.length > 0) {
+        const pqlFields = profileSchemaContext.commonAttributes.map(f =>
+            `- ${f.path} (${f.type}): ${f.title || ''}`
+        ).join('\n');
+
+        pqlSection = `
+PROFILE STORE ATTRIBUTES (for PQL queries):
+${pqlFields}
+
+When generating PQL expressions, use these EXACT profile field paths. Example:
+- person.name.firstName
+- personalEmail.address
+- loyaltyDetails.level
+`;
+    }
+
+    return `You are an expert AI assistant for Adobe Experience Platform (AEP). You help users explore, analyze, AND create/manage their AEP resources.
 
 CAPABILITIES:
 - Query and analyze batch ingestion status and errors
@@ -22,7 +122,7 @@ CAPABILITIES:
 - Diagnose ingestion failures with root cause analysis
 - Generate PQL expressions from natural language
 - Generate SQL queries from natural language
-
+${schemaSection}${pqlSection}
 AUTONOMOUS BEHAVIOR:
 1. When asked to create something (segment, query, etc.), gather all needed info first
 2. Search for relevant schemas, namespaces, and reference data
@@ -51,6 +151,7 @@ RESTRICTIONS:
 - Write operations require user approval (unless auto-mode)
 
 Remember: You are an expert. Explain things like a helpful colleague, not a machine.`;
+}
 
 // Summarization prompt for tool results
 const SUMMARIZATION_PROMPT = `You are an AI assistant that explains AEP data clearly. Given the following tool result, provide a natural language summary.
@@ -84,7 +185,7 @@ export async function processMessage({ message, autoMode = false, history = [], 
 
     // Build messages array for LLM
     const messages = [
-        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'system', content: buildSystemPrompt() },
         ...chatHistory.map(m => ({ role: m.role, content: m.content })),
         { role: 'user', content: message }
     ];

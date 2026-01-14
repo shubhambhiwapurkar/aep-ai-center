@@ -13,16 +13,56 @@ import * as policyService from '../services/policy.service.js';
 import * as observabilityService from '../services/observability.service.js';
 import * as auditService from '../services/audit.service.js';
 import * as accessService from '../services/access.service.js';
+import { config, setSandboxName, getSandboxName } from '../config/config.js';
 
 const router = Router();
+
+// Middleware to handle sandbox override from frontend
+router.use((req, res, next) => {
+    // Allow frontend to specify sandbox via query param or header
+    if (req.query.sandbox) {
+        req.sandboxOverride = req.query.sandbox;
+    } else if (req.headers['x-sandbox-name']) {
+        req.sandboxOverride = req.headers['x-sandbox-name'];
+    } else {
+        req.sandboxOverride = getSandboxName();
+    }
+    next();
+});
 
 // Helper for safe async route handling
 const asyncHandler = (fn) => (req, res) => {
     Promise.resolve(fn(req, res)).catch(err => {
-        console.error('Route error:', err);
-        res.status(500).json({ error: err.message });
+        // Only log non-404 errors (404s are expected for missing resources)
+        if (!err.message?.includes('404')) {
+            console.error('Route error:', err.message);
+        }
+        const status = err.message?.includes('404') ? 404 :
+            err.message?.includes('400') ? 400 : 500;
+        res.status(status).json({ error: err.message });
     });
 };
+
+// ===== SANDBOX SWITCH API =====
+router.get('/sandbox/current', asyncHandler(async (req, res) => {
+    res.json({
+        sandbox: getSandboxName(),
+        default: process.env.SANDBOX_NAME,
+        name: getSandboxName()
+    });
+}));
+
+router.post('/sandbox/switch', asyncHandler(async (req, res) => {
+    const { sandbox } = req.body;
+    if (!sandbox) {
+        return res.status(400).json({ error: 'Sandbox name required' });
+    }
+
+    // Actually update the config sandbox (affects all services!)
+    setSandboxName(sandbox);
+
+    res.json({ success: true, sandbox: getSandboxName() });
+}));
 
 // ===== AUTH / CONNECTION =====
 router.get('/connection', asyncHandler(async (req, res) => {
@@ -108,6 +148,13 @@ router.get('/batches/:batchId/datasets/:datasetId/preview', asyncHandler(async (
 router.get('/schemas', asyncHandler(async (req, res) => {
     const schemas = await schemaService.listSchemas(req.query.container || 'tenant', req.query);
     res.json(schemas);
+}));
+
+// Get ALL schemas with pagination (for Schema Registry page)
+router.get('/schemas/all', asyncHandler(async (req, res) => {
+    const container = req.query.container || 'tenant';
+    const schemas = await schemaService.listAllSchemas(container);
+    res.json({ results: schemas, total: schemas.length });
 }));
 
 router.get('/schemas/stats', asyncHandler(async (req, res) => {

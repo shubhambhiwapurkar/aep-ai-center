@@ -1,3 +1,18 @@
 {
-  "conversations": []
+  "conversations": [
+    {
+      "id": "conv_1768383170703_6p5btgh81",
+      "title": "Chat Session",
+      "createdAt": "2026-01-14T09:32:50.703Z",
+      "updatedAt": "2026-01-14T09:32:50.703Z",
+      "messages": []
+    },
+    {
+      "id": "conv_1768384222096_uukipnho2",
+      "title": "Chat Session",
+      "createdAt": "2026-01-14T09:50:22.096Z",
+      "updatedAt": "2026-01-14T09:50:22.096Z",
+      "messages": []
+    }
+  ]
 }

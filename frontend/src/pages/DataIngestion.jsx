@@ -1,8 +1,9 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import {
     JSONViewer, TabPanel, DetailField, StatusBadge,
     LoadingSpinner, EmptyState, Modal
 } from '../components/SharedComponents';
+import { getAllDatasets } from '../services/api';
 
 export default function DataIngestion() {
     const [activeTab, setActiveTab] = useState('batch');
@@ -29,12 +30,109 @@ export default function DataIngestion() {
         history: []
     });
 
-    // Simulated datasets for selection
-    const datasets = [
-        { id: 'ds001', name: 'Customer Profiles', schema: 'Profile' },
-        { id: 'ds002', name: 'Experience Events', schema: 'ExperienceEvent' },
-        { id: 'ds003', name: 'Product Catalog', schema: 'Product' }
-    ];
+    // Real datasets from API
+    const [datasets, setDatasets] = useState([]);
+    const [datasetsLoading, setDatasetsLoading] = useState(true);
+
+    // Sample data generation
+    const [generatingSample, setGeneratingSample] = useState(false);
+
+    // Load real datasets on mount
+    useEffect(() => {
+        loadDatasets();
+    }, []);
+
+    const loadDatasets = async () => {
+        try {
+            setDatasetsLoading(true);
+            const response = await getAllDatasets(); // Fetch ALL datasets with pagination
+            // API returns a map of { id: dataset }, need to convert to array
+            const datasetMap = response?.datasets || response || {};
+            const datasetList = Array.isArray(datasetMap)
+                ? datasetMap
+                : Object.values(datasetMap);
+
+            setDatasets(datasetList.sort((a, b) => (b.created || 0) - (a.created || 0)));
+        } catch (error) {
+            console.error('Failed to load datasets:', error);
+            setDatasets([]);
+        } finally {
+            setDatasetsLoading(false);
+        }
+    };
+
+    // Generate sample data based on selected dataset schema
+    const generateSampleData = () => {
+        if (!selectedDataset) {
+            alert('Please select a target dataset first');
+            return;
+        }
+
+        setGeneratingSample(true);
+
+        // Find selected dataset
+        const dataset = datasets.find(d => d.id === selectedDataset || d['@id'] === selectedDataset);
+        const schemaRef = dataset?.schemaRef?.id || dataset?.schema || 'Unknown';
+
+        // Generate sample data based on common schema patterns
+        let sampleData = [];
+        const now = new Date().toISOString();
+
+        if (schemaRef.includes('ExperienceEvent') || schemaRef.includes('experienceevent')) {
+            sampleData = [
+                {
+                    "_id": `event_${Date.now()}_1`,
+                    "timestamp": now,
+                    "eventType": "web.pageView",
+                    "_experience": {
+                        "analytics": {
+                            "customDimensions": { "eVar1": "homepage" }
+                        }
+                    },
+                    "web": {
+                        "webPageDetails": { "name": "Home Page", "URL": "https://example.com" }
+                    }
+                },
+                {
+                    "_id": `event_${Date.now()}_2`,
+                    "timestamp": now,
+                    "eventType": "commerce.productViews",
+                    "commerce": { "productViews": { "value": 1 } },
+                    "productListItems": [{ "SKU": "PROD001", "name": "Sample Product" }]
+                }
+            ];
+        } else if (schemaRef.includes('Profile') || schemaRef.includes('profile')) {
+            sampleData = [
+                {
+                    "_id": `profile_${Date.now()}`,
+                    "person": {
+                        "name": { "firstName": "John", "lastName": "Doe" },
+                        "birthDate": "1990-01-15"
+                    },
+                    "personalEmail": { "address": "john.doe@example.com" },
+                    "mobilePhone": { "number": "+1-555-0101" }
+                }
+            ];
+        } else {
+            // Generic sample
+            sampleData = [
+                {
+                    "_id": `record_${Date.now()}`,
+                    "name": "Sample Record",
+                    "description": "Auto-generated sample data",
+                    "createdAt": now,
+                    "status": "active"
+                }
+            ];
+        }
+
+        // Create file from sample data
+        const blob = new Blob([JSON.stringify(sampleData, null, 2)], { type: 'application/json' });
+        const file = new File([blob], `sample_data_${Date.now()}.json`, { type: 'application/json' });
+
+        handleFiles([file]);
+        setGeneratingSample(false);
+    };
 
     const handleFileDrop = (e) => {
         e.preventDefault();
@@ -308,28 +406,65 @@ export default function DataIngestion() {
                         <div style={{ marginBottom: '20px' }}>
                             <label style={{ display: 'block', marginBottom: '8px', fontWeight: 500 }}>
                                 Target Dataset
+                                {datasetsLoading && <span style={{ marginLeft: '8px', fontSize: '12px', color: 'var(--text-muted)' }}>Loading...</span>}
                             </label>
-                            <select
-                                value={selectedDataset}
-                                onChange={e => setSelectedDataset(e.target.value)}
-                                style={{
-                                    width: '100%',
-                                    maxWidth: '400px',
-                                    padding: '12px 16px',
-                                    background: 'var(--bg-primary)',
-                                    border: '1px solid var(--border-default)',
-                                    borderRadius: '8px',
-                                    color: 'var(--text-primary)',
-                                    fontSize: '14px'
-                                }}
-                            >
-                                <option value="">Select a dataset...</option>
-                                {datasets.map(ds => (
-                                    <option key={ds.id} value={ds.id}>
-                                        {ds.name} ({ds.schema})
+                            <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                                <select
+                                    value={selectedDataset}
+                                    onChange={e => setSelectedDataset(e.target.value)}
+                                    disabled={datasetsLoading}
+                                    style={{
+                                        flex: 1,
+                                        maxWidth: '500px',
+                                        padding: '12px 16px',
+                                        background: 'var(--bg-primary)',
+                                        border: '1px solid var(--border-default)',
+                                        borderRadius: '8px',
+                                        color: 'var(--text-primary)',
+                                        fontSize: '14px'
+                                    }}
+                                >
+                                    <option value="">
+                                        {datasetsLoading ? 'Loading datasets...' : `Select a dataset (${datasets.length} available)`}
                                     </option>
-                                ))}
-                            </select>
+                                    {datasets.map(ds => (
+                                        <option key={ds.id || ds['@id']} value={ds.id || ds['@id']}>
+                                            {ds.name || ds.title || 'Unnamed Dataset'}
+                                        </option>
+                                    ))}
+                                </select>
+                                <button
+                                    onClick={generateSampleData}
+                                    disabled={!selectedDataset || generatingSample}
+                                    className="btn-secondary"
+                                    style={{
+                                        padding: '12px 20px',
+                                        background: selectedDataset ? 'var(--accent-purple)' : 'var(--bg-elevated)',
+                                        color: selectedDataset ? 'white' : 'var(--text-muted)',
+                                        border: 'none',
+                                        borderRadius: '8px',
+                                        cursor: selectedDataset ? 'pointer' : 'not-allowed',
+                                        fontWeight: 500,
+                                        whiteSpace: 'nowrap'
+                                    }}
+                                >
+                                    {generatingSample ? '⏳ Generating...' : '✨ Generate Sample Data'}
+                                </button>
+                                <button
+                                    onClick={loadDatasets}
+                                    className="btn-secondary"
+                                    style={{
+                                        padding: '12px 16px',
+                                        background: 'var(--bg-elevated)',
+                                        border: 'none',
+                                        borderRadius: '8px',
+                                        cursor: 'pointer'
+                                    }}
+                                    title="Refresh datasets"
+                                >
+                                    🔄
+                                </button>
+                            </div>
                         </div>
 
                         {/* Drop Zone */}
