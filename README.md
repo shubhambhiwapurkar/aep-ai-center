@@ -106,6 +106,21 @@ API_KEY=your_adobe_api_key
 ACCESS_TOKEN=your_access_token
 SANDBOX_NAME=your_sandbox_name
 TENANT_ID=_yourtenant
+or
+CLIENT_ID=
+CLIENT_SECRET=
+API_KEY=
+IMS_ORG=
+SANDBOX_NAME=
+IMS_URL=
+PLATFORM_URL=
+SCOPES=
+PORT=3001
+
+# Google Gemini Configuration (for AI Agent)
+# Get your API key from: https://aistudio.google.com/app/apikey
+GEMINI_API_KEY=
+GEMINI_MODEL=**
 
 # ═══════════════════════════════════════════════════════════
 # AI Provider Configuration
