@@ -94,7 +94,7 @@ TENANT_ID=_yourtenant
 # ═══════════════════════════════════════════════════════════
 LLM_PROVIDER=gemini
 GEMINI_API_KEY=your_gemini_api_key_from_ai_studio
-GEMINI_MODEL=gemini-2.0-flash
+GEMINI_MODEL=gemini-3-pro
 
 # Optional: Alternative Models
 # GEMINI_MODEL=gemini-2.0-flash-lite (faster, less capable)
