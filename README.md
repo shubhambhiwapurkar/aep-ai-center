@@ -270,7 +270,8 @@ aep-ai-center/
 
 ## 📝 License
 
-MIT License - feel free to use and modify for your projects.
+Distributed under the **MIT License**. 
+Copyright (c) 2024 **Shubham Bhiwapurkar**.
 
 ---
 
