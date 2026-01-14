@@ -1,165 +1,263 @@
-# AEP AI Center (Monitoring + Debug + Developer Agent)
+# AEP AI Center 🚀
 
-**AEP AI Center** is a next-generation "Full Agent" system for Adobe Experience Platform. It transforms the traditional monitoring dashboard into an intelligent Command Center where an AI Copilot proactively monitors system health, diagnoses ingestion failures, and executes complex tasks via natural language.
+**AEP AI Center** is a next-generation intelligent monitoring and management platform for Adobe Experience Platform. It combines a powerful Command Center dashboard with an AI Copilot that proactively monitors system health, diagnoses issues, and executes complex tasks via natural language.
+
+![Platform](https://img.shields.io/badge/Platform-Adobe%20Experience%20Platform-red)
+![AI](https://img.shields.io/badge/AI-Gemini%202.0%20Flash-blue)
+![React](https://img.shields.io/badge/Frontend-React%20+%20Vite-61DAFB)
+![Node](https://img.shields.io/badge/Backend-Node.js%20+%20Express-339933)
 
 ---
 
-## 🚀 Features
+## ✨ Key Features
 
-*   **AI Command Center**: Daily briefings, real-time alerts, and system health matrix.
-*   **Intelligent Agent**: 50+ tools covering Datasets, Batches, Segments, Flows, and Identity.
-*   **Forensic Analysis**: Auto-diagnose batch failures and row-level errors.
-*   **Natural Language Control**: "Show me failed batches", "Analyze segment definition", "Check platform health".
-*   **Advanced Analyitcs**: Visual Data Prep, SQL Query Editor, and Segment Population analysis.
+### 🎯 Command Center Dashboard
+- **Real-time System Health** - Live connection status, uptime monitoring, and service health matrix
+- **Daily AI Briefings** - Automated system health analysis with AI-generated insights
+- **Smart Alerts** - Proactive issue detection with actionable recommendations
+- **Data Heartbeat** - 24-hour activity visualization with success/failure tracking
+
+### 🤖 AI Copilot Agent
+- **50+ Integrated Tools** - Complete coverage of Datasets, Batches, Segments, Flows, Identity, and more
+- **Natural Language Control** - "Show me failed batches", "Create a segment for females over 30", "Analyze platform health"
+- **Thinking Indicators** - See what the agent is processing in real-time
+- **Chat History Recall** - Save and load previous conversations
+- **Auto/Safe Modes** - Control whether agent executes actions automatically
+
+### 📊 Data Management
+- **Batch Monitor** - Track ingestion batches with auto-analysis for failures
+- **Data Ingestion** - File upload with preview, validation, and streaming with lag indicators
+- **Data Flows** - Flow management with destination dry-run validation
+- **Data Lineage** - Interactive visualization of data flow from sources to destinations
+- **Data Prep** - Visual field mapping and transformation builder
+
+### 🔍 Analytics & Queries
+- **Query Service** - SQL editor with syntax highlighting and AI optimization suggestions
+- **Schema Registry** - Browse schemas, field groups, classes with full XDM support
+- **Segment Builder** - Create and analyze segments with population verification
+- **Profile Lookup** - Real-time profile search with merge policy management
+
+### 🛡️ Governance & Security
+- **Policy Management** - Data labels and marketing action policies
+- **Privacy Jobs** - GDPR/CCPA compliance job monitoring
+- **Audit Log** - Complete activity tracking with filters
+- **Sandbox Management** - Multi-sandbox support with comparison tools
+
+### 🎨 Modern UI/UX
+- **Dark/Light Mode** - Full theme support with smooth transitions
+- **Responsive Design** - Works on desktop and tablet
+- **Glassmorphism Design** - Modern, premium aesthetic
+- **Markdown Support** - Rich formatting in AI responses
 
 ---
 
 ## 🛠️ Setup & Installation
 
 ### Prerequisites
-*   Node.js (v18+)
-*   Adobe Experience Platform Access (Sandbox Name, Tenant ID)
-*   Google Gemini API Key (or OpenAI/Azure equivalent)
+- **Node.js** v18+ (v20+ recommended)
+- **Adobe Experience Platform** access (Sandbox, Tenant ID, API credentials)
+- **Google AI Studio API Key** for Gemini
+
+### Get Your API Keys
+
+#### Adobe Experience Platform
+1. Go to [Adobe Developer Console](https://developer.adobe.com/console)
+2. Create a new project with Experience Platform API
+3. Generate OAuth credentials (API Key, Client Secret, Technical Account)
+
+#### Google Gemini API
+1. Visit [Google AI Studio](https://aistudio.google.com/)
+2. Click "Get API Key" → Create API key
+3. Copy the key for your `.env` file
 
 ### Environment Variables
+
 Create a `.env` file in the `backend` directory:
+
 ```env
 PORT=3001
-# Adobe Credentials
-IMS_ORG_ID=your_org_id
-API_KEY=your_api_key
-ACCESS_TOKEN=your_access_token
-SANDBOX_NAME=your_sandbox
-TENANT_ID=your_tenant_id
 
-# AI Provider
+# ═══════════════════════════════════════════════════════════
+# Adobe Experience Platform Credentials
+# Get these from Adobe Developer Console
+# ═══════════════════════════════════════════════════════════
+IMS_ORG_ID=your_ims_org_id@AdobeOrg
+API_KEY=your_adobe_api_key
+ACCESS_TOKEN=your_access_token
+SANDBOX_NAME=your_sandbox_name
+TENANT_ID=_yourtenant
+
+# ═══════════════════════════════════════════════════════════
+# AI Provider Configuration
+# Get your API key from: https://aistudio.google.com/
+# ═══════════════════════════════════════════════════════════
 LLM_PROVIDER=gemini
-GEMINI_API_KEY=your_gemini_key
-GEMINI_MODEL=gemini-1.5-pro
+GEMINI_API_KEY=your_gemini_api_key_from_ai_studio
+GEMINI_MODEL=gemini-2.0-flash
+
+# Optional: Alternative Models
+# GEMINI_MODEL=gemini-2.0-flash-lite (faster, less capable)
+# GEMINI_MODEL=gemini-2.5-pro (most capable, slower)
 ```
 
 ### Installation
+
 ```bash
 # Clone the repository
 git clone https://github.com/shubhambhiwapurkar/aep-ai-center.git
 cd aep-ai-center
 
-# Install dependencies
+# Install all dependencies (backend + frontend)
 npm run install:all
 ```
 
 ### Running the Application
+
 Open two terminal windows:
 
-**Backend (Port 3001)**
+**Terminal 1 - Backend (Port 3001)**
 ```bash
 cd backend
 npm start
 ```
 
-**Frontend (Port 5173)**
+**Terminal 2 - Frontend (Port 5173)**
 ```bash
 cd frontend
 npm run dev
 ```
 
-Visit the application at: `http://localhost:5173`
+🌐 Open **http://localhost:5173** in your browser
 
 ---
 
-## 🗺️ Technical Roadmap: Advanced Features
+## � Project Structure
 
-The following roadmap outlines the implementation of three critical advanced capabilities: **Segment Verification**, **Profile Health**, and **AI Context Extraction**.
-
-### Feature 1: "True Count" Segment Verification
-**Goal**: Verify the estimated segment count from the Segmentation Service against the actual Data Lake data using Query Service (SQL).
-
-**Process Map:**
-1.  **Identify the Target Segment**:
-    *   UI: User selects a Segment.
-    *   API: `GET /data/core/ups/segment/definitions/:SEGMENT_ID` (Extract ID and Name).
-2.  **Locate Profile Snapshot**:
-    *   Find the "Profile Snapshot Export" dataset in Catalog.
-    *   API: `GET /data/foundation/catalog/dataSets?name=Profile Snapshot Export`.
-    *   Extract: Table Name (e.g., `profile_snapshot_export_123`).
-3.  **Construct Verification Query**:
-    *   SQL Logic:
-        ```sql
-        SELECT count(1) as actual_count
-        FROM profile_snapshot_export_123
-        WHERE segmentMembership.ups.['<SEGMENT_ID>'].status = 'existing'
-        ```
-4.  **Execute & Poll**:
-    *   Submit: `POST /data/foundation/query/queries`
-    *   Poll: `GET /data/foundation/query/queries/:queryId`
-5.  **Comparison UI**: Display "Estimated Count" vs "Actual Data Lake Count".
-
-### Feature 2: System-Wide Profile Health Check
-**Goal**: Get a definitive count of profiles and distribution without expensive SQL.
-
-**Process Map:**
-1.  **Fetch Sample Status**:
-    *   Use Preview API for fast counts.
-    *   API: `GET /data/core/ups/previewsamplestatus` (Returns `totalProfileCount`).
-2.  **Fetch Distribution Reports**:
-    *   By Namespace: `GET /data/core/ups/previewsamplestatus/report/namespace`
-    *   By Dataset: `GET /data/core/ups/previewsamplestatus/report/dataset`
-3.  **"Orphaned Profile" Check (Advanced)**:
-    *   Identify profiles with no recent activity (high count = optimize identity graph alert).
-    *   SQL:
-        ```sql
-        SELECT count(1)
-        FROM profile_snapshot_table
-        WHERE timestamp < date_sub(current_date(), 90)
-        ```
-
-### Feature 3: The AEP Extractor & Data Dictionary (AI Context Builder)
-**Goal**: Create a flattened, human-readable "Dictionary" of every attribute to prevent AI hallucinations.
-
-#### 1. Schema Stitching Logic (Backend)
-Traverse the Schema Registry to build a complete map.
-*   **Step A**: Find Union Schema (meta:class = `XDM Individual Profile`).
-*   **Step B**: Fetch Full Schema with `Accept: application/vnd.adobe.xed-full+json; version=1`.
-*   **Step C**: Recursive Field Extraction ("Stitcher").
-    *   Iterate properties.
-    *   Resolve `$ref` (Mixins/Field Groups) by fetching `GET /schemaregistry/tenant/mixins/:ID`.
-    *   Flatten paths (e.g., `_tenant.loyalty.tier`).
-
-#### 2. Attribute Mapping & Metadata Enrichment
-Extract metadata for the AI:
-*   `title`: Human readable name.
-*   `description`: Functional description.
-*   `type`: Data type (string, int, etc.).
-*   `meta:enum`: Allowed values (critical for filtering).
-
-#### 3. Generating "Profile Snapshot" Dictionary
-To support SQL generation:
-*   Get Dataset Schema from the Snapshot Dataset.
-*   Run the Stitcher on that specific schema ID.
-
-#### 4. The Final Output (AI Context Object)
-Example JSON structure for the Vector Database:
-```json
-[
-  {
-    "path": "person.name.firstName",
-    "sql_column": "person.name.firstName",
-    "type": "string",
-    "description": "The customer's first name given at registration.",
-    "source_field_group": "Demographic Details"
-  },
-  {
-    "path": "loyalty.status",
-    "sql_column": "work.loyalty.status",
-    "type": "enum",
-    "allowed_values": ["Gold", "Silver", "Bronze"],
-    "description": "Current loyalty tier calculated daily."
-  }
-]
+```
+aep-ai-center/
+├── backend/
+│   ├── src/
+│   │   ├── agent/           # AI Agent logic
+│   │   │   ├── agent.service.js
+│   │   │   ├── llm.service.js    # Gemini integration
+│   │   │   └── tools/            # 50+ agent tools
+│   │   ├── routes/
+│   │   │   └── api.routes.js     # All API endpoints
+│   │   └── services/             # AEP API services
+│   │       ├── batch.service.js
+│   │       ├── schema.service.js
+│   │       ├── segment.service.js
+│   │       ├── chat.service.js   # Chat history
+│   │       └── ...
+│   └── data/
+│       └── chat_history.json     # Conversation storage
+│
+├── frontend/
+│   ├── src/
+│   │   ├── components/
+│   │   │   ├── Shell.jsx         # Main layout
+│   │   │   ├── AgentPanel.jsx    # AI Copilot UI
+│   │   │   └── SharedComponents.jsx
+│   │   ├── pages/                # Feature pages
+│   │   │   ├── Dashboard.jsx
+│   │   │   ├── BatchMonitor.jsx
+│   │   │   ├── Segments.jsx
+│   │   │   ├── DataLineage.jsx
+│   │   │   └── ...
+│   │   └── services/
+│   │       ├── api.js            # AEP API calls
+│   │       └── agent-api.js      # Agent API calls
+│   └── index.html
+│
+└── README.md
 ```
 
-**Usage Flow:**
-1.  User: "Show me count of Gold members."
-2.  Agent searches Vector DB for "Gold members" -> matches `loyalty.status` ('Gold').
-3.  Retrieves SQL column `work.loyalty.status`.
-4.  Generates: `SELECT count(1) FROM profile_snapshot WHERE work.loyalty.status = 'Gold'`.
+---
+
+## 🤖 AI Agent Capabilities
+
+### Available Tools (50+)
+
+| Category | Tools |
+|----------|-------|
+| **Batches** | List, get details, get stats, preview data, analyze failures |
+| **Datasets** | List, get details, get files, get labels, get batches |
+| **Schemas** | List, get details, get field groups, export, generate dictionary |
+| **Segments** | List, create, get definition, estimate population, verify count |
+| **Flows** | List, get runs, get specs, get connections, dry-run validation |
+| **Identity** | Get namespaces, lookup XID, get cluster members, get history |
+| **Profiles** | Lookup by identity, get merge policies, check orphaned profiles |
+| **Queries** | Execute SQL, get templates, explain query, AI optimization |
+| **Governance** | Get policies, get labels, check marketing actions |
+| **Platform** | Get sandbox info, compare sandboxes, system health check |
+
+### Example Prompts
+
+```
+"Show me all failed batches from yesterday"
+"Create a segment for customers over 30 who are female"
+"What's causing ingestion failures?"
+"Analyze the loyalty schema and show me the field structure"
+"Run a health check on the platform"
+"Compare prod and dev sandboxes"
+"Optimize this SQL query for better performance"
+```
+
+---
+
+## 📸 Screenshots
+
+| Dashboard | AI Agent |
+|-----------|----------|
+| Command Center with real-time health monitoring | AI Copilot with thinking indicators |
+
+| Data Lineage | Batch Monitor |
+|--------------|---------------|
+| Interactive flow visualization | Auto-analysis for failures |
+
+---
+
+## 🔧 API Endpoints
+
+### Core APIs
+| Endpoint | Description |
+|----------|-------------|
+| `GET /api/connection` | Check AEP connection status |
+| `GET /api/dashboard/summary` | Full dashboard metrics |
+| `POST /api/agent/chat` | Send message to AI agent |
+| `GET /api/agent/schema-context` | Get schema fields for AI context |
+
+### Chat History
+| Endpoint | Description |
+|----------|-------------|
+| `GET /api/chat/conversations` | List all saved conversations |
+| `GET /api/chat/conversations/:id` | Get specific conversation |
+| `PUT /api/chat/conversations/:id` | Save/update conversation |
+| `DELETE /api/chat/conversations/:id` | Delete conversation |
+
+---
+
+## 🚀 Roadmap
+
+- [ ] Vector database for schema embeddings
+- [ ] Multi-model AI support (GPT-4, Claude)
+- [ ] Real-time streaming responses
+- [ ] Collaborative multi-user sessions
+- [ ] Webhook integrations
+- [ ] Custom dashboard widgets
+
+---
+
+## 📝 License
+
+MIT License - feel free to use and modify for your projects.
+
+---
+
+## 🤝 Contributing
+
+Contributions are welcome! Please open an issue or submit a pull request.
+
+---
+
+**Built with ❤️ for Adobe Experience Platform users**
