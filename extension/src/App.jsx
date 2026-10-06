@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { load, save } from './lib/storage.js';
 import { DEFAULT_SETTINGS, isConfigured } from './lib/llm.js';
 import { emptyContext, loadContexts, saveContexts } from './lib/context.js';
+import Icon from './components/Icon.jsx';
+import Home from './pages/Home.jsx';
 import JourneyBuilder from './pages/JourneyBuilder.jsx';
 import SolutionDesigner from './pages/SolutionDesigner.jsx';
 import Assistant from './pages/Assistant.jsx';
@@ -9,16 +11,17 @@ import ContextPage from './pages/ContextPage.jsx';
 import Settings from './pages/Settings.jsx';
 
 const TABS = [
-    { id: 'journey', label: 'Journeys' },
-    { id: 'designer', label: 'Designer' },
-    { id: 'assistant', label: 'Ask' },
-    { id: 'context', label: 'Context' },
-    { id: 'settings', label: 'Settings' }
+    { id: 'home', label: 'AI Center', icon: 'home' },
+    { id: 'journey', label: 'Journeys', icon: 'journey' },
+    { id: 'designer', label: 'Designer', icon: 'designer' },
+    { id: 'assistant', label: 'Ask', icon: 'chat' },
+    { id: 'context', label: 'Context', icon: 'context' },
+    { id: 'settings', label: 'Settings', icon: 'settings' }
 ];
 
 const initialTab = () => {
     const hash = window.location.hash.replace('#', '');
-    return TABS.some((t) => t.id === hash) ? hash : 'journey';
+    return TABS.some((t) => t.id === hash) ? hash : 'home';
 };
 
 export default function App() {
@@ -68,41 +71,46 @@ export default function App() {
     };
 
     const llmReady = isConfigured(settings);
+    const aiTabs = ['designer', 'assistant'];
 
     return (
         <div className="app">
             <header className="topbar">
-                <div className="brand">AEP AI Center</div>
-                <select
-                    className="ctx-select"
-                    title="Active sandbox context"
-                    value={contexts.activeIndex}
-                    onChange={(e) => updateContexts({ ...contexts, activeIndex: Number(e.target.value) })}
-                >
-                    {contexts.items.map((c, i) => <option key={i} value={i}>{c.name}</option>)}
-                </select>
-                <button className="icon-btn" title="Open in a full tab" onClick={openInTab}>⤢</button>
+                <div className="brand"><img src="icon.png" alt="" />AEP AI Center</div>
+                <div className="spacer" />
+                <label className="ctx-picker" title="Active sandbox context">
+                    <span>Sandbox</span>
+                    <select value={contexts.activeIndex} onChange={(e) => updateContexts({ ...contexts, activeIndex: Number(e.target.value) })}>
+                        {contexts.items.map((c, i) => <option key={i} value={i}>{c.name}</option>)}
+                    </select>
+                </label>
+                <button className="icon-btn" title="Open in a full tab" onClick={openInTab}><Icon name="expand" /></button>
             </header>
-            <nav className="tabs">
-                {TABS.map((t) => (
-                    <button key={t.id} className={tab === t.id ? 'active' : ''} onClick={() => setTab(t.id)}>
-                        {t.label}
-                        {t.id === 'settings' && !llmReady && <span className="dot" title="LLM not configured" />}
-                    </button>
-                ))}
-            </nav>
-            <main className="content">
-                {!llmReady && tab !== 'settings' && tab !== 'context' && (
-                    <div className="banner">
-                        AI features need your own LLM key. <button className="link" onClick={() => setTab('settings')}>Open Settings</button> - templates, the editor and the build guide work without it.
-                    </div>
-                )}
-                {tab === 'journey' && <JourneyBuilder settings={settings} ctx={ctx} />}
-                {tab === 'designer' && <SolutionDesigner settings={settings} ctx={ctx} />}
-                {tab === 'assistant' && <Assistant settings={settings} ctx={ctx} />}
-                {tab === 'context' && <ContextPage settings={settings} ctx={ctx} setCtx={setCtx} addCtx={addCtx} removeCtx={removeCtx} />}
-                {tab === 'settings' && <Settings settings={settings} onChange={updateSettings} />}
-            </main>
+            <div className="body">
+                <nav className="nav">
+                    {TABS.map((t) => (
+                        <button key={t.id} className={tab === t.id ? 'active' : ''} onClick={() => setTab(t.id)} title={t.label}>
+                            <Icon name={t.icon} />
+                            <span className="label">{t.label}</span>
+                            {t.id === 'settings' && !llmReady && <span className="dot" title="LLM not configured" />}
+                        </button>
+                    ))}
+                </nav>
+                <main className="content">
+                    {!llmReady && aiTabs.includes(tab) && (
+                        <div className="banner notice">
+                            <Icon name="alert" />
+                            <span>This tab needs your own LLM key. <button className="link" onClick={() => setTab('settings')}>Open Settings</button></span>
+                        </div>
+                    )}
+                    {tab === 'home' && <Home settings={settings} ctx={ctx} go={setTab} />}
+                    {tab === 'journey' && <JourneyBuilder settings={settings} ctx={ctx} />}
+                    {tab === 'designer' && <SolutionDesigner settings={settings} ctx={ctx} />}
+                    {tab === 'assistant' && <Assistant settings={settings} ctx={ctx} />}
+                    {tab === 'context' && <ContextPage settings={settings} ctx={ctx} setCtx={setCtx} addCtx={addCtx} removeCtx={removeCtx} />}
+                    {tab === 'settings' && <Settings settings={settings} onChange={updateSettings} />}
+                </main>
+            </div>
         </div>
     );
 }

@@ -5,7 +5,8 @@ A side panel for Adobe Experience Platform, RTCDP and Journey Optimizer practiti
 
 | Tab | What it does |
 |-----|--------------|
-| **Journeys** | Build journey skeletons (entry, waits, conditions, reactions, channels, custom actions) from templates, a plain-language brief, or by hand. Live validation against AJO rules and your sandbox. Training-mode build guide, AI explanation, JSON export. |
+| **AI Center** (home) | Sandbox vitals: health score, 24h ingestion success and failures, dataflow runs, profile/audience/schema/dataset counts, a "needs attention" list with AI explain-and-fix per failure, and an AI daily briefing. Needs the backend (`GET /api/context/vitals`: counts, states and error codes only). |
+| **Journeys** | Start screen with your draft, saved journeys and templates. Build journey skeletons (entry, waits, conditions, reactions, channels, custom actions) from templates, a plain-language brief, or by hand. Live validation against AJO rules and your sandbox. Training-mode build guide, AI explanation, JSON export. |
 | **Designer** | Wizard: business goals → data sources → data dictionary → channels & governance → full implementation plan (identity strategy, XDM schemas, datasets, connectors, merge policies, audiences, destinations, journeys, monitoring) plus a step-by-step training checklist for a dev sandbox and a versionable JSON manifest. |
 | **Ask** | Chat about AEP/RTCDP/AJO grounded in your sandbox context and the Adobe page you have open. |
 | **Context** | The technical shape of a sandbox: schemas + field paths, identity namespaces, audience rules, datasets, dataflows, merge policies, journey events, custom actions, data dictionary. Sync from the backend, edit by hand, or import/export as a JSON file. |
