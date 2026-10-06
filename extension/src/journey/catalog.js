@@ -16,7 +16,7 @@ export const ACTIVITIES = {
     unitaryEvent: {
         category: 'entry',
         label: 'Unitary event',
-        color: '#3b82f6',
+        color: '#12805c',
         fields: [
             { key: 'eventName', label: 'Event', type: 'event', required: true },
             { key: 'reentrance', label: 'Re-entrance', type: 'select', options: ['not allowed', 'allowed after wait', 'allowed'], default: 'allowed after wait' },
@@ -37,7 +37,7 @@ export const ACTIVITIES = {
     businessEvent: {
         category: 'entry',
         label: 'Business event',
-        color: '#3b82f6',
+        color: '#12805c',
         fields: [
             { key: 'eventName', label: 'Business event', type: 'event', required: true },
             { key: 'audienceName', label: 'Audience to read', type: 'audience', required: true }
@@ -53,7 +53,7 @@ export const ACTIVITIES = {
     readAudience: {
         category: 'entry',
         label: 'Read audience',
-        color: '#3b82f6',
+        color: '#12805c',
         fields: [
             { key: 'audienceName', label: 'Audience', type: 'audience', required: true },
             { key: 'schedule', label: 'Schedule', type: 'select', options: ['once', 'daily', 'weekly', 'monthly'], default: 'once' },
@@ -73,7 +73,7 @@ export const ACTIVITIES = {
     audienceQualification: {
         category: 'entry',
         label: 'Audience qualification',
-        color: '#3b82f6',
+        color: '#12805c',
         fields: [
             { key: 'audienceName', label: 'Audience', type: 'audience', required: true },
             { key: 'behavior', label: 'Trigger on', type: 'select', options: ['enters audience', 'exits audience'], default: 'enters audience' }
@@ -88,7 +88,7 @@ export const ACTIVITIES = {
     wait: {
         category: 'flow',
         label: 'Wait',
-        color: '#8b5cf6',
+        color: '#7e4bd6',
         fields: [
             { key: 'amount', label: 'Duration', type: 'number', default: 1 },
             { key: 'unit', label: 'Unit', type: 'select', options: ['minutes', 'hours', 'days'], default: 'days' }
@@ -101,7 +101,7 @@ export const ACTIVITIES = {
     condition: {
         category: 'flow',
         label: 'Condition',
-        color: '#8b5cf6',
+        color: '#7e4bd6',
         branching: true,
         fields: [
             { key: 'kind', label: 'Condition type', type: 'select', options: ['data source', 'time', 'percentage split', 'date'], default: 'data source' }
@@ -120,7 +120,7 @@ export const ACTIVITIES = {
     reaction: {
         category: 'flow',
         label: 'Reaction',
-        color: '#8b5cf6',
+        color: '#7e4bd6',
         branching: true,
         fields: [
             { key: 'toMessage', label: 'React to message (node id)', type: 'message', required: true },
@@ -137,7 +137,7 @@ export const ACTIVITIES = {
     eventWait: {
         category: 'flow',
         label: 'Wait for event',
-        color: '#8b5cf6',
+        color: '#7e4bd6',
         branching: true,
         fields: [
             { key: 'eventName', label: 'Event', type: 'event', required: true },
@@ -151,7 +151,7 @@ export const ACTIVITIES = {
     jump: {
         category: 'flow',
         label: 'Jump',
-        color: '#8b5cf6',
+        color: '#7e4bd6',
         fields: [{ key: 'targetJourney', label: 'Target journey', type: 'text', required: true }],
         what: 'Moves the person into another journey.',
         why: 'Hand off to a reusable journey (e.g. onboarding → nurture) instead of copying steps.',
@@ -161,7 +161,7 @@ export const ACTIVITIES = {
     updateProfile: {
         category: 'flow',
         label: 'Update profile',
-        color: '#8b5cf6',
+        color: '#7e4bd6',
         fields: [
             { key: 'field', label: 'Profile field', type: 'field', required: true },
             { key: 'value', label: 'Value / expression', type: 'text' }
@@ -176,7 +176,7 @@ export const ACTIVITIES = {
     email: {
         category: 'action',
         label: 'Email',
-        color: '#00a37a',
+        color: '#1473e6',
         fields: [
             { key: 'message', label: 'Message name', type: 'text', required: true },
             { key: 'surface', label: 'Channel surface', type: 'text' },
@@ -193,7 +193,7 @@ export const ACTIVITIES = {
     push: {
         category: 'action',
         label: 'Push',
-        color: '#00a37a',
+        color: '#1473e6',
         fields: [
             { key: 'message', label: 'Message name', type: 'text', required: true },
             { key: 'surface', label: 'Channel surface', type: 'text' },
@@ -207,7 +207,7 @@ export const ACTIVITIES = {
     sms: {
         category: 'action',
         label: 'SMS',
-        color: '#00a37a',
+        color: '#1473e6',
         fields: [
             { key: 'message', label: 'Message name', type: 'text', required: true },
             { key: 'surface', label: 'Channel surface', type: 'text' },
@@ -221,7 +221,7 @@ export const ACTIVITIES = {
     inApp: {
         category: 'action',
         label: 'In-app',
-        color: '#00a37a',
+        color: '#1473e6',
         fields: [
             { key: 'message', label: 'Message name', type: 'text', required: true },
             { key: 'brief', label: 'Content brief', type: 'textarea' }
@@ -234,7 +234,7 @@ export const ACTIVITIES = {
     customAction: {
         category: 'action',
         label: 'Custom action',
-        color: '#00a37a',
+        color: '#1473e6',
         fields: [
             { key: 'actionName', label: 'Custom action', type: 'action', required: true },
             { key: 'payloadNotes', label: 'Payload mapping notes', type: 'textarea' }

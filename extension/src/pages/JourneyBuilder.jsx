@@ -12,19 +12,34 @@ import { isConfigured } from '../lib/llm.js';
 import { describeHits } from '../lib/pii.js';
 import { download, load, readFile, save } from '../lib/storage.js';
 import Markdown from '../components/Markdown.jsx';
+import Icon from '../components/Icon.jsx';
 
 const blankJourney = () => {
     const start = createNode('unitaryEvent', { label: 'Entry event' });
     return normalizeJourney({ name: 'New journey', entry: start.id, nodes: [start] });
 };
 
+const ABBR = {
+    unitaryEvent: 'EV', businessEvent: 'BE', readAudience: 'RA', audienceQualification: 'AQ',
+    wait: 'W', condition: 'IF', reaction: 'RE', eventWait: 'EW', jump: 'J', updateProfile: 'UP',
+    email: '@', push: 'P', sms: 'SMS', inApp: 'IA', customAction: '{ }', end: ''
+};
+
 function JourneyNode({ data }) {
     const def = ACTIVITIES[data.node.type];
+    const isEnd = data.node.type === 'end';
     return (
-        <div className={`jnode ${data.selected ? 'selected' : ''} ${data.level || ''}`} style={{ borderLeftColor: def.color }}>
+        <div className={`jnode ${isEnd ? 'end' : ''} ${data.selected ? 'selected' : ''} ${data.level || ''}`}>
             <Handle type="target" position={Position.Top} />
-            <div className="jnode-type">{def.label}</div>
-            {data.node.type !== 'end' && <div className="jnode-label">{data.node.label}</div>}
+            {isEnd ? <div className="jnode-type">End</div> : (
+                <>
+                    <div className="jnode-icon" style={{ background: def.color }}>{ABBR[data.node.type]}</div>
+                    <div className="jnode-text">
+                        <div className="jnode-type">{def.label}</div>
+                        <div className="jnode-label">{data.node.label}</div>
+                    </div>
+                </>
+            )}
             {data.level && <span className={`badge ${data.level}`}>{data.level === 'error' ? '!' : '?'}</span>}
             <Handle type="source" position={Position.Bottom} />
         </div>
@@ -48,8 +63,10 @@ export default function JourneyBuilder({ settings, ctx }) {
     const [done, setDone] = useState({});
     const [saved, setSaved] = useState([]);
 
+    const [draft, setDraft] = useState(undefined);
+
     useEffect(() => {
-        load('journeyDraft', null).then((j) => setJourney(j || normalizeJourney(TEMPLATES[0].journey)));
+        load('journeyDraft', null).then(setDraft);
         load('savedJourneys', []).then(setSaved);
     }, []);
     useEffect(() => {
@@ -81,12 +98,7 @@ export default function JourneyBuilder({ settings, ctx }) {
         return { nodes: rfNodes, edges: rfEdges };
     }, [journey, selected, issues]);
 
-    if (!journey) return <div className="loading">Loading…</div>;
-
-    const map = byId(journey);
-    const node = map.get(selected);
-    const errors = issues.filter((i) => i.level === 'error').length;
-    const warnings = issues.filter((i) => i.level === 'warning').length;
+    if (draft === undefined) return <div className="loading">Loading…</div>;
 
     const replaceJourney = (j, msg = '') => {
         setJourney(j);
@@ -96,15 +108,16 @@ export default function JourneyBuilder({ settings, ctx }) {
         setNotice(msg);
     };
 
-    const runAi = async (refine) => {
-        if (!brief.trim()) return;
+    const runAi = async (refine, text = brief) => {
+        if (!text.trim()) return;
         setBusy(true);
         setNotice('');
         try {
-            const res = await generateJourney(settings, ctx, brief, refine ? journey : null);
+            const res = await generateJourney(settings, ctx, text, refine ? journey : null);
             replaceJourney(res.journey, describeHits(res.redactions));
             setAssumptions(res.assumptions);
             setPanel(res.assumptions.length ? 'issues' : 'inspect');
+            setBrief('');
         } catch (e) {
             setNotice(`AI error: ${e.message}`);
         } finally {
@@ -138,43 +151,34 @@ export default function JourneyBuilder({ settings, ctx }) {
         setNotice(`Saved "${journey.name}" in this browser.`);
     };
 
+    if (!journey) {
+        return (
+            <StartScreen
+                draft={draft}
+                saved={saved}
+                busy={busy}
+                notice={notice}
+                llm={isConfigured(settings)}
+                onOpen={(j, msg) => replaceJourney(normalizeJourney(j), msg)}
+                onGenerate={(text) => runAi(false, text)}
+                onImport={importJson}
+            />
+        );
+    }
+
+    const map = byId(journey);
+    const node = map.get(selected);
+    const errors = issues.filter((i) => i.level === 'error').length;
+    const warnings = issues.filter((i) => i.level === 'warning').length;
+
     return (
         <div className="journey">
-            <section className="card">
-                <div className="row wrap">
-                    <select value="" onChange={(e) => {
-                        const t = TEMPLATES.find((x) => x.id === e.target.value);
-                        if (t) replaceJourney(normalizeJourney(t.journey), `Loaded template: ${t.name}`);
-                    }}>
-                        <option value="">Start from template…</option>
-                        {TEMPLATES.map((t) => <option key={t.id} value={t.id}>{t.name} - {t.summary}</option>)}
-                    </select>
-                    {saved.length > 0 && (
-                        <select value="" onChange={(e) => {
-                            const s = saved[Number(e.target.value)];
-                            if (s) replaceJourney(normalizeJourney(s.journey), `Opened "${s.journey.name}"`);
-                        }}>
-                            <option value="">Open saved…</option>
-                            {saved.map((s, i) => <option key={i} value={i}>{s.journey.name}</option>)}
-                        </select>
-                    )}
-                    <button onClick={() => replaceJourney(blankJourney(), 'Blank journey')}>New</button>
-                    <label className="btn">Import<input type="file" accept=".json" hidden onChange={(e) => e.target.files[0] && importJson(e.target.files[0])} /></label>
-                    <button onClick={saveCopy}>Save</button>
-                </div>
-                <textarea
-                    rows={2}
-                    placeholder='Describe the journey, e.g. "Abandoned browse: product viewed but no cart in 2h → email, then push to app users who did not click; loyalty members get free shipping"'
-                    value={brief}
-                    onChange={(e) => setBrief(e.target.value)}
-                />
-                <div className="row">
-                    <button className="primary" disabled={busy || !isConfigured(settings)} onClick={() => runAi(false)}>{busy ? 'Working…' : 'Generate skeleton'}</button>
-                    <button disabled={busy || !isConfigured(settings)} onClick={() => runAi(true)}>Refine current</button>
-                </div>
-                {notice && <div className="notice">{notice}</div>}
-            </section>
-
+            <div className="journey-head">
+                <button className="quiet" onClick={() => { setDraft(journey); setJourney(null); setNotice(''); }}><Icon name="back" size={16} />All journeys</button>
+                <div className="spacer" />
+                <button onClick={saveCopy}>Save</button>
+            </div>
+            {notice && <div className="notice">{notice}</div>}
             <section className="card">
                 <input className="title-input" value={journey.name} onChange={(e) => setJourney({ ...journey, name: e.target.value })} />
                 <input className="muted-input" placeholder="Description" value={journey.description} onChange={(e) => setJourney({ ...journey, description: e.target.value })} />
@@ -195,6 +199,16 @@ export default function JourneyBuilder({ settings, ctx }) {
                         <Background gap={16} />
                         <Controls showInteractive={false} />
                     </ReactFlow>
+                </div>
+            </section>
+
+            <section className="card">
+                <div className="row">
+                    <input placeholder='Refine with AI, e.g. "add a push for app users who did not open the email"' value={brief}
+                        onChange={(e) => setBrief(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && runAi(true)} />
+                    <button className="primary" disabled={busy || !brief.trim() || !isConfigured(settings)} onClick={() => runAi(true)}>
+                        <Icon name="sparkle" size={16} />{busy ? 'Working…' : 'Refine'}
+                    </button>
                 </div>
             </section>
 
@@ -446,4 +460,61 @@ function guideToMarkdown(journey, guide) {
             ...(s.pitfalls?.length ? ['', `> ⚠ ${s.pitfalls.join(' ')}`] : []), ''
         ])
     ].join('\n');
+}
+
+function StartScreen({ draft, saved, busy, notice, llm, onOpen, onGenerate, onImport }) {
+    const [text, setText] = useState('');
+    return (
+        <div className="journey-start">
+            <h1 className="page-title">Journeys</h1>
+            <p className="muted">Design the journey skeleton - entry, timing, logic and channels - then build it in AJO with the guide or export it.</p>
+
+            {draft && (
+                <section className="card">
+                    <div className="row between">
+                        <div><div className="small muted">Continue where you left off</div><strong>{draft.name}</strong> <span className="small muted">· {draft.nodes.filter((n) => n.type !== 'end').length} steps</span></div>
+                        <button className="primary" onClick={() => onOpen(draft, '')}>Continue</button>
+                    </div>
+                </section>
+            )}
+
+            <section className="card">
+                <h3><Icon name="sparkle" size={16} /> Describe a journey</h3>
+                <textarea rows={3} value={text} onChange={(e) => setText(e.target.value)}
+                    placeholder='e.g. "Abandoned browse: product viewed but no add-to-cart in 2 hours → email; if not clicked in 2 days, push to app users; loyalty gold members get free shipping"' />
+                <div className="row wrap">
+                    <button className="primary" disabled={busy || !llm || !text.trim()} onClick={() => onGenerate(text)}>{busy ? 'Designing…' : 'Generate skeleton'}</button>
+                    <button onClick={() => onOpen(blankJourney(), 'Blank journey')}><Icon name="plus" size={16} />Blank journey</button>
+                    <label className="btn"><Icon name="upload" size={16} />Import JSON<input type="file" accept=".json" hidden onChange={(e) => e.target.files[0] && onImport(e.target.files[0])} /></label>
+                </div>
+                {!llm && <div className="small muted">Generating from a description needs an LLM key (Settings).</div>}
+                {notice && <div className="notice">{notice}</div>}
+            </section>
+
+            {saved.length > 0 && (
+                <>
+                    <div className="section-title">Your journeys</div>
+                    <div className="start-grid">
+                        {saved.map((s, i) => (
+                            <button key={i} className="tcard" onClick={() => onOpen(s.journey, `Opened "${s.journey.name}"`)}>
+                                <strong>{s.journey.name}</strong>
+                                <span>{s.journey.description || `${s.journey.nodes.length} steps`}</span>
+                                <em>Saved {new Date(s.savedAt).toLocaleDateString()}</em>
+                            </button>
+                        ))}
+                    </div>
+                </>
+            )}
+
+            <div className="section-title">Start from a template</div>
+            <div className="start-grid">
+                {TEMPLATES.map((t) => (
+                    <button key={t.id} className="tcard" onClick={() => onOpen(t.journey, `Template: ${t.name}`)}>
+                        <strong>{t.name}</strong>
+                        <span>{t.summary}</span>
+                    </button>
+                ))}
+            </div>
+        </div>
+    );
 }
