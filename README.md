@@ -71,6 +71,19 @@ In short: It’s an "Easy Mode" for AEP that lets you manage your platform by ta
 
 ---
 
+## 🧩 Chrome Side Panel (new)
+
+The [`extension/`](extension/README.md) folder contains a Chrome side panel that works next to the Adobe UI:
+
+- **Journey skeleton builder**: templates, plain-language brief → journey, live validation against AJO rules, step-by-step build guide (training mode), JSON export
+- **Solution designer wizard**: data sources + data dictionary → full RTCDP/AJO implementation plan, dev-sandbox training checklist, versionable JSON manifest
+- **Ask**: an AEP/AJO assistant grounded in your sandbox metadata
+- **Metadata only, local only**: no profile data, PII redaction on every prompt, bring your own LLM (Claude, OpenAI/Azure/Ollama, Gemini)
+
+See [extension/README.md](extension/README.md) to install it.
+
+---
+
 ## 🛠️ Setup & Installation
 
 ### Prerequisites
