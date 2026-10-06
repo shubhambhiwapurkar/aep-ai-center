@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import { config } from './config/config.js';
 import apiRoutes from './routes/api.routes.js';
+import contextRoutes from './routes/context.routes.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -15,6 +16,7 @@ app.use(cors());
 app.use(express.json());
 
 // API Routes
+app.use('/api/context', contextRoutes);
 app.use('/api', apiRoutes);
 
 // Serve API catalog (for API Browser)

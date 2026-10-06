@@ -1,0 +1,18 @@
+{
+  "manifest_version": 3,
+  "name": "AEP AI Center",
+  "version": "0.1.0",
+  "description": "Side panel copilot for Adobe Experience Platform & Journey Optimizer. Metadata only - no profile data, nothing stored off your machine.",
+  "icons": { "128": "icon.png" },
+  "action": { "default_title": "Open AEP AI Center", "default_icon": "icon.png" },
+  "side_panel": { "default_path": "sidepanel.html" },
+  "background": { "service_worker": "background.js" },
+  "permissions": ["sidePanel", "storage", "unlimitedStorage", "tabs"],
+  "host_permissions": [
+    "http://localhost:3001/*",
+    "https://api.openai.com/*",
+    "https://api.anthropic.com/*",
+    "https://generativelanguage.googleapis.com/*"
+  ],
+  "optional_host_permissions": ["https://*/*", "http://localhost/*", "http://127.0.0.1/*"]
+}
