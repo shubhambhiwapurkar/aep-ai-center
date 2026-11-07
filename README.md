@@ -80,7 +80,12 @@ The [`extension/`](extension/README.md) folder contains a Chrome side panel that
 - **Ask**: an AEP/AJO assistant grounded in your sandbox metadata
 - **Metadata only, local only**: no profile data, PII redaction on every prompt, bring your own LLM (Claude, OpenAI/Azure/Ollama, Gemini)
 
-See [extension/README.md](extension/README.md) to install it.
+- **Knows the page you're on**: open a dataset, schema, audience or dataflow in AEP and the panel shows its health, recent batches/runs, error codes and an AI explanation
+- **Explore + `Ctrl/⌘+K` palette**: find any object in the sandbox by name or id
+- **Tools**: sandbox hygiene audit with fixes, field finder, Query Service SQL linter, PQL audience size estimate
+- **Enterprise ready**: Chrome Enterprise managed policy (backend URL/token, allowed LLM providers, AI kill switch), API token + origin allowlist on the backend
+
+See [extension/README.md](extension/README.md) to install it, or open **Chrome Extension** in the web app for status and an enterprise policy generator.
 
 ---
 
@@ -133,6 +138,14 @@ IMS_URL=
 PLATFORM_URL=
 SCOPES=
 PORT=3001
+
+# ═══════════════════════════════════════════════════════════
+# Security (recommended whenever more than one person uses the backend)
+# ═══════════════════════════════════════════════════════════
+HOST=127.0.0.1                 # default; use 0.0.0.0 only behind a proxy with API_TOKEN set
+API_TOKEN=                     # shared secret; web app (Chrome Extension page) and extension send it as a bearer token
+ALLOWED_ORIGINS=               # extra browser origins, comma-separated (localhost and chrome-extension:// are allowed by default)
+ALLOWED_EXTENSION_IDS=         # pin to your extension id(s) from chrome://extensions
 
 
 

@@ -1,5 +1,19 @@
 import { useState, useEffect } from 'react';
-import { getSandboxes, getSchemas, getSegments, getDatasets } from '../services/api';
+import { getSandboxes, getSchemasIn, getSegmentsIn, getDatasetsIn } from '../services/api';
+
+// Ids, timestamps and sandbox bookkeeping always differ between sandboxes; ignore them when diffing.
+const VOLATILE_KEYS = new Set([
+    '$id', 'id', 'meta:altId', '_links', '_page', 'version', 'imsOrg', 'sandboxId', 'sandbox', 'sandboxName',
+    'created', 'updated', 'createdUser', 'updatedUser', 'createdClient', 'updatedClient', 'creationTime', 'updateTime',
+    'updateEpoch', 'createEpoch', 'lastModified', 'meta:createdDate', 'meta:sandboxId', 'meta:sandboxType',
+    'meta:containerId', 'meta:registryMetadata', 'meta:imsOrg', 'meta:tenantNamespace', 'meta:usageCount',
+    'schemaRef', 'mergePolicyId', 'dependencies', 'viewId', 'files', 'lastBatchId', 'lastBatchStatus', 'metrics'
+]);
+const stripVolatile = (obj) => {
+    if (Array.isArray(obj)) return obj.map(stripVolatile);
+    if (!obj || typeof obj !== 'object') return obj;
+    return Object.fromEntries(Object.entries(obj).filter(([k]) => !VOLATILE_KEYS.has(k)).map(([k, v]) => [k, stripVolatile(v)]));
+};
 
 export default function SandboxCompare() {
     const [sandboxes, setSandboxes] = useState([]);
@@ -11,6 +25,7 @@ export default function SandboxCompare() {
     const [selectedObject, setSelectedObject] = useState(null);
     const [comparing, setComparing] = useState(false);
     const [diffResult, setDiffResult] = useState(null);
+    const [loadError, setLoadError] = useState('');
 
     useEffect(() => {
         loadSandboxes();
@@ -35,35 +50,29 @@ export default function SandboxCompare() {
     const loadObjects = async () => {
         if (!leftSandbox || !rightSandbox) return;
         setComparing(true);
+        setLoadError('');
+        setSelectedObject(null);
+        setDiffResult(null);
+
+        // Each side is read from its own sandbox (x-sandbox-name), in parallel.
+        const loaders = {
+            schemas: async (sb) => (await getSchemasIn(sb))?.results || [],
+            segments: async (sb) => (await getSegmentsIn(sb))?.segments || [],
+            datasets: async (sb) => Object.entries((await getDatasetsIn(sb)) || {}).map(([id, d]) => ({ id, ...d }))
+        };
 
         try {
-            // Note: In real implementation, you'd pass sandbox context to API calls
-            // For now we show the concept with available API
-            let leftData = [];
-            let rightData = [];
-
-            switch (objectType) {
-                case 'schemas':
-                    const schemasRes = await getSchemas('tenant');
-                    leftData = schemasRes?.results || [];
-                    rightData = [...leftData]; // Demo: same data, in real impl different sandboxes
-                    break;
-                case 'segments':
-                    const segRes = await getSegments();
-                    leftData = segRes?.segments || [];
-                    rightData = [...leftData];
-                    break;
-                case 'datasets':
-                    const dsRes = await getDatasets();
-                    leftData = Object.values(dsRes || {}).slice(0, 20);
-                    rightData = [...leftData];
-                    break;
-            }
-
+            const [leftData, rightData] = await Promise.all([
+                loaders[objectType](leftSandbox.name),
+                loaders[objectType](rightSandbox.name)
+            ]);
             setLeftObjects(leftData);
             setRightObjects(rightData);
         } catch (e) {
             console.error('Failed to load objects', e);
+            setLoadError(e.message);
+            setLeftObjects([]);
+            setRightObjects([]);
         } finally {
             setComparing(false);
         }
@@ -79,8 +88,9 @@ export default function SandboxCompare() {
         return obj.title || obj.name || obj.$id || obj.id || 'Unnamed';
     };
 
+    // Objects are matched across sandboxes by name: ids are generated per sandbox.
     const getObjectId = (obj) => {
-        return obj.$id || obj.id || obj.name;
+        return (obj.title || obj.name || obj.$id || obj.id || '').trim().toLowerCase();
     };
 
     const compareObject = (obj) => {
@@ -98,8 +108,8 @@ export default function SandboxCompare() {
             });
         } else {
             // Deep comparison
-            const leftStr = JSON.stringify(obj, null, 2);
-            const rightStr = JSON.stringify(rightObj, null, 2);
+            const leftStr = JSON.stringify(stripVolatile(obj));
+            const rightStr = JSON.stringify(stripVolatile(rightObj));
 
             if (leftStr === rightStr) {
                 setDiffResult({
@@ -110,7 +120,7 @@ export default function SandboxCompare() {
                 });
             } else {
                 // Find differences
-                const diffs = findDiffs(obj, rightObj);
+                const diffs = findDiffs(stripVolatile(obj), stripVolatile(rightObj));
                 setDiffResult({
                     status: 'different',
                     message: `${diffs.length} differences found`,
@@ -166,6 +176,12 @@ export default function SandboxCompare() {
                 <h1>🔀 Sandbox Comparison</h1>
                 <p className="page-subtitle">Compare objects between sandboxes - identify drift and sync configurations</p>
             </div>
+
+            {loadError && (
+                <div className="card" style={{ marginBottom: '16px', borderLeft: '4px solid var(--accent-red)' }}>
+                    Could not load both sandboxes: {loadError}
+                </div>
+            )}
 
             {/* Control Bar */}
             <div className="card" style={{ marginBottom: '24px' }}>

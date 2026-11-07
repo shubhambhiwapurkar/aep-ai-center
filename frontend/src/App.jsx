@@ -19,6 +19,7 @@ import SandboxCompare from './pages/SandboxCompare';
 import DataIngestion from './pages/DataIngestion';
 import DataPrep from './pages/DataPrep';
 import DataLineage from './pages/DataLineage';
+import ExtensionSetup from './pages/ExtensionSetup';
 import './index.css';
 
 function App() {
@@ -45,6 +46,7 @@ function App() {
           <Route path="/data-prep" element={<DataPrep />} />
           <Route path="/data-lineage" element={<DataLineage />} />
           <Route path="/api-browser" element={<APIBrowser />} />
+          <Route path="/extension" element={<ExtensionSetup />} />
         </Routes>
       </Shell>
     </BrowserRouter>

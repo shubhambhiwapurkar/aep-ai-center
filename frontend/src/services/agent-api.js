@@ -1,10 +1,13 @@
-const API_BASE = 'http://localhost:3001/api';
+import { BACKEND_URL, authHeaders } from './api';
+
+const API_BASE = `${BACKEND_URL}/api`;
 
 async function fetchAPI(endpoint, options = {}) {
     const response = await fetch(`${API_BASE}${endpoint}`, {
         ...options,
         headers: {
             'Content-Type': 'application/json',
+            ...authHeaders(),
             ...options.headers
         }
     });

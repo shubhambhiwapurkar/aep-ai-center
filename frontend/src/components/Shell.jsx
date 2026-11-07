@@ -215,7 +215,8 @@ export default function Shell({ children }) {
             '/ingestion': 'Data Ingestion',
             '/data-prep': 'Data Prep',
             '/data-lineage': 'Data Lineage',
-            '/api-browser': 'API Browser'
+            '/api-browser': 'API Browser',
+            '/extension': 'Chrome Extension'
         };
         return titles[location.pathname] || 'Dashboard';
     };
@@ -302,6 +303,9 @@ export default function Shell({ children }) {
                     <nav className="sidebar-nav">
                         <NavLink to="/api-browser" className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
                             <APIIcon /> {!collapsed && 'API Browser'}
+                        </NavLink>
+                        <NavLink to="/extension" className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
+                            <span className="sidebar-icon-text">🧩</span> {!collapsed && 'Chrome Extension'}
                         </NavLink>
                     </nav>
                 </div>

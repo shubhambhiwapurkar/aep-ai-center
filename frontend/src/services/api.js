@@ -1,4 +1,16 @@
-const API_BASE = 'http://localhost:3001/api';
+export const BACKEND_URL = (import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001').replace(/\/+$/, '');
+const API_BASE = `${BACKEND_URL}/api`;
+
+// ===== API TOKEN (only needed when the backend sets API_TOKEN) =====
+export const getApiToken = () => localStorage.getItem('aep_api_token') || import.meta.env.VITE_API_TOKEN || '';
+export const setApiToken = (token) => {
+    if (token) localStorage.setItem('aep_api_token', token);
+    else localStorage.removeItem('aep_api_token');
+};
+export const authHeaders = () => {
+    const token = getApiToken();
+    return token ? { Authorization: `Bearer ${token}` } : {};
+};
 
 // ===== GLOBAL SANDBOX STATE =====
 let currentSandbox = localStorage.getItem('aep_sandbox') || null;
@@ -13,6 +25,7 @@ export const getCurrentSandboxName = () => currentSandbox;
 async function fetchAPI(endpoint, options = {}) {
     const headers = {
         'Content-Type': 'application/json',
+        ...authHeaders(),
         ...options.headers
     };
 
@@ -39,6 +52,7 @@ async function fetchAPIWithSandbox(endpoint, sandbox, options = {}) {
     const headers = {
         'Content-Type': 'application/json',
         'x-sandbox-name': sandbox,
+        ...authHeaders(),
         ...options.headers
     };
 
@@ -54,6 +68,17 @@ async function fetchAPIWithSandbox(endpoint, sandbox, options = {}) {
 
     return response.json();
 }
+
+// ===== CROSS-SANDBOX READS (Sandbox Compare) =====
+// The backend scopes each request to the sandbox in x-sandbox-name without changing the default.
+export const getSchemasIn = (sandbox, container = 'tenant') =>
+    fetchAPIWithSandbox(`/schemas/all?${new URLSearchParams({ container })}`, sandbox);
+export const getSegmentsIn = (sandbox) => fetchAPIWithSandbox('/segments?limit=100', sandbox);
+export const getDatasetsIn = (sandbox) => fetchAPIWithSandbox('/datasets/all', sandbox);
+
+// ===== EXTENSION PAIRING =====
+export const getExtensionStatus = () => fetchAPI('/ext/status');
+export const getExtensionWhoami = () => fetchAPI('/ext/whoami');
 
 // ===== SANDBOX API =====
 export const getActiveSandboxInfo = () => fetchAPI('/sandbox/current');
