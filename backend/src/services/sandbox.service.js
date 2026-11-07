@@ -1,5 +1,5 @@
 import fetch from 'node-fetch';
-import { config } from '../config/config.js';
+import { config, getSandboxName } from '../config/config.js';
 import { getAccessToken } from './auth.service.js';
 
 async function aepFetch(endpoint, options = {}) {
@@ -9,7 +9,7 @@ async function aepFetch(endpoint, options = {}) {
         'Authorization': `Bearer ${token}`,
         'x-api-key': config.apiKey,
         'x-gw-ims-org-id': config.imsOrg,
-        'x-sandbox-name': config.sandboxName,
+        'x-sandbox-name': getSandboxName(),
         'Accept': 'application/json',
         ...options.headers
     };
@@ -109,10 +109,10 @@ export async function deleteSandbox(sandboxName) {
 export async function getCurrentSandbox() {
     try {
         const sandboxes = await listSandboxes();
-        const current = sandboxes.sandboxes?.find(s => s.name === config.sandboxName);
-        return current || { name: config.sandboxName, title: config.sandboxName };
+        const current = sandboxes.sandboxes?.find(s => s.name === getSandboxName());
+        return current || { name: getSandboxName(), title: getSandboxName() };
     } catch (error) {
-        return { name: config.sandboxName, title: config.sandboxName, error: error.message };
+        return { name: getSandboxName(), title: getSandboxName(), error: error.message };
     }
 }
 
@@ -148,13 +148,13 @@ export async function getSandboxStats() {
                 state: sb.state,
                 region: sb.region
             })),
-            current: config.sandboxName
+            current: getSandboxName()
         };
     } catch (error) {
         console.error('Error getting sandbox stats:', error);
         return {
             total: 0,
-            current: config.sandboxName,
+            current: getSandboxName(),
             error: error.message
         };
     }

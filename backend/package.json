@@ -1,12 +1,13 @@
 {
     "name": "aep-monitor-backend",
     "version": "1.0.0",
-    "description": "AEP Monitoring System Backend",
+    "description": "AEP AI Center backend: Adobe Experience Platform API gateway for the web app and Chrome extension",
     "type": "module",
     "main": "src/index.js",
     "scripts": {
         "dev": "node --watch src/index.js",
-        "start": "node src/index.js"
+        "start": "node src/index.js",
+        "test": "node --test test/*.test.js"
     },
     "dependencies": {
         "@google/generative-ai": "^0.24.1",

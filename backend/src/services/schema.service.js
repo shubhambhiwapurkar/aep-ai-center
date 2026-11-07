@@ -2,13 +2,19 @@ import fetch from 'node-fetch';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { config } from '../config/config.js';
+import { config, getSandboxName } from '../config/config.js';
 import { getAccessToken } from './auth.service.js';
 
 // Get directory path for cache file
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const CACHE_FILE_PATH = path.join(__dirname, '../../data/schema_dictionary_cache.json');
+const CACHE_DIR = path.join(__dirname, '../../data');
+
+/** Cache files are per sandbox: a dictionary from one sandbox must never answer for another. */
+function sandboxCacheFile(prefix) {
+    const safe = getSandboxName().replace(/[^a-z0-9-]/gi, '_');
+    return path.join(CACHE_DIR, `${prefix}.${safe}.json`);
+}
 async function aepFetch(endpoint, options = {}) {
     const token = await getAccessToken();
 
@@ -16,7 +22,7 @@ async function aepFetch(endpoint, options = {}) {
         'Authorization': `Bearer ${token}`,
         'x-api-key': config.apiKey,
         'x-gw-ims-org-id': config.imsOrg,
-        'x-sandbox-name': config.sandboxName,
+        'x-sandbox-name': getSandboxName(),
         'Accept': options.accept || 'application/json',
         ...options.headers
     };
@@ -296,7 +302,7 @@ export async function extractUnionSchemaForAI() {
 
         return {
             extractedAt: new Date().toISOString(),
-            sandbox: config.sandboxName,
+            sandbox: getSandboxName(),
             schemas: extractedSchemas
         };
     } catch (error) {
@@ -305,21 +311,20 @@ export async function extractUnionSchemaForAI() {
 }
 
 // Cache for Union Profile Schema (for PQL queries)
-const UNION_CACHE_FILE_PATH = path.join(__dirname, '../../data/union_profile_cache.json');
-let unionProfileCache = null;
-let unionProfileCacheTime = null;
+// sandbox -> { data, time }
+const unionProfileCache = new Map();
 
 /**
  * Load union profile cache from file
  */
 function loadUnionCacheFromFile() {
     try {
-        if (fs.existsSync(UNION_CACHE_FILE_PATH)) {
-            const data = JSON.parse(fs.readFileSync(UNION_CACHE_FILE_PATH, 'utf8'));
+        const file = sandboxCacheFile('union_profile_cache');
+        if (fs.existsSync(file)) {
+            const data = JSON.parse(fs.readFileSync(file, 'utf8'));
             if (data.timestamp && Date.now() - data.timestamp < CACHE_TTL_MS) {
-                console.log('[Union] Loaded union profile cache from file');
-                unionProfileCache = data.profileSchema;
-                unionProfileCacheTime = data.timestamp;
+                console.log(`[Union] Loaded union profile cache for ${getSandboxName()} from file`);
+                unionProfileCache.set(getSandboxName(), { data: data.profileSchema, time: data.timestamp });
                 return true;
             }
         }
@@ -335,17 +340,18 @@ function loadUnionCacheFromFile() {
  */
 export async function getUnionProfileSchemaForPQL(forceRefresh = false) {
     // Check in-memory cache
-    if (!forceRefresh && unionProfileCache && unionProfileCacheTime) {
-        const age = Date.now() - unionProfileCacheTime;
+    const cachedUnion = unionProfileCache.get(getSandboxName());
+    if (!forceRefresh && cachedUnion) {
+        const age = Date.now() - cachedUnion.time;
         if (age < CACHE_TTL_MS) {
             console.log(`[Union] Returning cached profile schema (${Math.round(age / 1000)}s old)`);
-            return unionProfileCache;
+            return cachedUnion.data;
         }
     }
 
     // Try file cache
     if (!forceRefresh && loadUnionCacheFromFile()) {
-        return unionProfileCache;
+        return unionProfileCache.get(getSandboxName()).data;
     }
 
     console.log('[Union] Extracting union profile schema for PQL...');
@@ -389,7 +395,7 @@ export async function getUnionProfileSchemaForPQL(forceRefresh = false) {
 
         const result = {
             extractedAt: new Date().toISOString(),
-            sandbox: config.sandboxName,
+            sandbox: getSandboxName(),
             profileTitle: profileUnion?.title || 'XDM Individual Profile',
             totalFields: profileFields.length,
             fields: profileFields,
@@ -401,13 +407,11 @@ export async function getUnionProfileSchemaForPQL(forceRefresh = false) {
         };
 
         // Cache to memory and file
-        unionProfileCache = result;
-        unionProfileCacheTime = Date.now();
+        unionProfileCache.set(getSandboxName(), { data: result, time: Date.now() });
 
         try {
-            const dir = path.dirname(UNION_CACHE_FILE_PATH);
-            if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-            fs.writeFileSync(UNION_CACHE_FILE_PATH, JSON.stringify({
+            if (!fs.existsSync(CACHE_DIR)) fs.mkdirSync(CACHE_DIR, { recursive: true });
+            fs.writeFileSync(sandboxCacheFile('union_profile_cache'), JSON.stringify({
                 timestamp: Date.now(),
                 profileSchema: result
             }));
@@ -451,8 +455,8 @@ function extractProperties(properties, depth = 0) {
 }
 
 // In-memory cache
-let dictionaryCache = null;
-let dictionaryCacheTime = null;
+// sandbox -> { data, time }
+const dictionaryCache = new Map();
 const CACHE_TTL_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
 
 /**
@@ -460,12 +464,12 @@ const CACHE_TTL_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
  */
 function loadCacheFromFile() {
     try {
-        if (fs.existsSync(CACHE_FILE_PATH)) {
-            const data = JSON.parse(fs.readFileSync(CACHE_FILE_PATH, 'utf8'));
+        const file = sandboxCacheFile('schema_dictionary_cache');
+        if (fs.existsSync(file)) {
+            const data = JSON.parse(fs.readFileSync(file, 'utf8'));
             if (data.timestamp && Date.now() - data.timestamp < CACHE_TTL_MS) {
-                console.log('[Dictionary] Loaded cache from file');
-                dictionaryCache = data.dictionary;
-                dictionaryCacheTime = data.timestamp;
+                console.log(`[Dictionary] Loaded cache for ${getSandboxName()} from file`);
+                dictionaryCache.set(getSandboxName(), { data: data.dictionary, time: data.timestamp });
                 return true;
             }
         }
@@ -480,11 +484,10 @@ function loadCacheFromFile() {
  */
 function saveCacheToFile(dictionary) {
     try {
-        const dir = path.dirname(CACHE_FILE_PATH);
-        if (!fs.existsSync(dir)) {
-            fs.mkdirSync(dir, { recursive: true });
+        if (!fs.existsSync(CACHE_DIR)) {
+            fs.mkdirSync(CACHE_DIR, { recursive: true });
         }
-        fs.writeFileSync(CACHE_FILE_PATH, JSON.stringify({
+        fs.writeFileSync(sandboxCacheFile('schema_dictionary_cache'), JSON.stringify({
             timestamp: Date.now(),
             dictionary: dictionary
         }));
@@ -494,8 +497,6 @@ function saveCacheToFile(dictionary) {
     }
 }
 
-// Try to load cache on module init
-loadCacheFromFile();
 
 /**
  * Process a batch of schemas and extract fields
@@ -559,17 +560,18 @@ async function processSchemasBatch(schemas, allFields, processedSchemas) {
  */
 export async function generateDataDictionary(forceRefresh = false) {
     // 1. Check in-memory cache first
-    if (!forceRefresh && dictionaryCache && dictionaryCacheTime) {
-        const age = Date.now() - dictionaryCacheTime;
+    const cachedDict = dictionaryCache.get(getSandboxName());
+    if (!forceRefresh && cachedDict) {
+        const age = Date.now() - cachedDict.time;
         if (age < CACHE_TTL_MS) {
             console.log(`[Dictionary] Returning cached data (${Math.round(age / 1000)}s old)`);
-            return { ...dictionaryCache, cached: true };
+            return { ...cachedDict.data, cached: true };
         }
     }
 
     // 2. Try to load from file cache
     if (!forceRefresh && loadCacheFromFile()) {
-        return { ...dictionaryCache, cached: true };
+        return { ...dictionaryCache.get(getSandboxName()).data, cached: true };
     }
 
     console.log(`[Dictionary] Building fresh dictionary with stream processing...`);
@@ -622,9 +624,12 @@ export async function generateDataDictionary(forceRefresh = false) {
             cached: false
         };
 
-        dictionaryCache = result;
-        dictionaryCacheTime = Date.now();
-        saveCacheToFile(result);
+        // Never cache an empty dictionary: it almost always means auth or network failed, and
+        // caching it would hide every field from the AI for the full TTL.
+        if (allFields.length > 0) {
+            dictionaryCache.set(getSandboxName(), { data: result, time: Date.now() });
+            saveCacheToFile(result);
+        }
 
         return result;
 

@@ -1,5 +1,5 @@
 import fetch from 'node-fetch';
-import { config } from '../config/config.js';
+import { config, getSandboxName } from '../config/config.js';
 
 let cachedToken = null;
 let tokenExpiry = null;
@@ -59,7 +59,7 @@ export async function checkConnection() {
                 'Authorization': `Bearer ${token}`,
                 'x-api-key': config.apiKey,
                 'x-gw-ims-org-id': config.imsOrg,
-                'x-sandbox-name': config.sandboxName
+                'x-sandbox-name': getSandboxName()
             }
         });
 
@@ -67,7 +67,7 @@ export async function checkConnection() {
             const data = await response.json();
             return {
                 connected: true,
-                sandboxName: config.sandboxName,
+                sandboxName: getSandboxName(),
                 timestamp: new Date().toISOString(),
                 sandboxes: data.sandboxes || []
             };

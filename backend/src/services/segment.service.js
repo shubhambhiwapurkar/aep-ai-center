@@ -1,5 +1,5 @@
 import fetch from 'node-fetch';
-import { config } from '../config/config.js';
+import { config, getSandboxName } from '../config/config.js';
 import { getAccessToken } from './auth.service.js';
 
 async function aepFetch(endpoint, options = {}) {
@@ -9,7 +9,7 @@ async function aepFetch(endpoint, options = {}) {
         'Authorization': `Bearer ${token}`,
         'x-api-key': config.apiKey,
         'x-gw-ims-org-id': config.imsOrg,
-        'x-sandbox-name': config.sandboxName,
+        'x-sandbox-name': getSandboxName(),
         'Accept': 'application/json',
         ...options.headers
     };
@@ -200,6 +200,57 @@ export async function deletePreview(previewId) {
  */
 export async function getSegmentEstimate(previewId) {
     return aepFetch(`/data/core/ups/estimate/${previewId}`);
+}
+
+/**
+ * Estimate the audience size of a PQL expression.
+ *
+ * Uses the Real-Time Customer Profile preview job + estimate endpoints
+ * (POST /data/core/ups/preview, GET /data/core/ups/estimate/{previewId}) and polls until the
+ * estimate is ready or `timeoutMs` passes. Returns counts only - never sample profiles.
+ * Ref: https://experienceleague.adobe.com/docs/experience-platform/segmentation/api/previews-and-estimates.html
+ */
+export async function estimateExpression(pql, { mergePolicyId, timeoutMs = 25000, pollMs = 2000 } = {}) {
+    if (!pql || typeof pql !== 'string') throw new Error('400: a PQL expression is required');
+    const preview = await createPreview({
+        predicateExpression: pql,
+        predicateType: 'pql/text',
+        predicateModel: '_xdm.context.profile',
+        graphType: 'none',
+        ...(mergePolicyId ? { mergePolicyId } : {})
+    });
+    const previewId = preview.previewId || preview.id;
+    if (!previewId) throw new Error('Preview job did not return an id');
+
+    const started = Date.now();
+    let estimate = null;
+    try {
+        while (Date.now() - started < timeoutMs) {
+            estimate = await getSegmentEstimate(previewId);
+            if (estimate?.state && !['RUNNING', 'NEW', 'PROCESSING'].includes(String(estimate.state).toUpperCase())) break;
+            await new Promise((r) => setTimeout(r, pollMs));
+        }
+    } finally {
+        deletePreview(previewId).catch(() => {});
+    }
+    return {
+        previewId,
+        state: estimate?.state || 'RUNNING',
+        estimatedSize: estimate?.estimatedSize ?? estimate?.estimatedNamespaceDistribution?.reduce?.((n, d) => n + (d.estimatedSize || 0), 0) ?? null,
+        confidenceInterval: estimate?.confidenceInterval ?? null,
+        profilesReadSoFar: estimate?.profilesReadSoFar ?? null,
+        totalRows: estimate?.totalRows ?? null,
+        estimatedNamespaceDistribution: estimate?.estimatedNamespaceDistribution ?? [],
+        timedOut: !estimate || String(estimate.state).toUpperCase() === 'RUNNING'
+    };
+}
+
+/** Estimate an existing segment definition by id (reads its PQL and merge policy). */
+export async function estimateSegment(segmentId) {
+    const seg = await getSegmentDetails(segmentId);
+    const pql = seg?.expression?.value;
+    if (!pql) throw new Error('400: this segment has no PQL expression to estimate');
+    return { segmentId, ...(await estimateExpression(pql, { mergePolicyId: seg.mergePolicyId })) };
 }
 
 // ===== SCHEDULES =====

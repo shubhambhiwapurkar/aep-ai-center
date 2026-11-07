@@ -1,5 +1,5 @@
 import fetch from 'node-fetch';
-import { config } from '../config/config.js';
+import { config, getSandboxName } from '../config/config.js';
 import { getAccessToken } from './auth.service.js';
 import * as datasetService from './dataset.service.js';
 import * as queryService from './query.service.js';
@@ -11,7 +11,7 @@ async function aepFetch(endpoint, options = {}) {
         'Authorization': `Bearer ${token}`,
         'x-api-key': config.apiKey,
         'x-gw-ims-org-id': config.imsOrg,
-        'x-sandbox-name': config.sandboxName,
+        'x-sandbox-name': getSandboxName(),
         'Accept': 'application/json',
         ...options.headers
     };

@@ -6,19 +6,25 @@
 import * as llm from './llm.service.js';
 import * as toolRegistry from './tools/index.js';
 import * as schemaService from '../services/schema.service.js';
+import { getSandboxName } from '../config/config.js';
 
 // In-memory chat history (per session)
 let chatHistory = [];
 
 // Cached schema context for AI
+// Both contexts belong to one sandbox; they are dropped and reloaded when the sandbox changes
+// so the agent never writes PQL/SQL against another sandbox's fields.
 let schemaContext = null;
 let schemaContextLoaded = false;
+let schemaContextSandbox = null;
+let profileSchemaContextSandbox = null;
 
 /**
  * Load schema context for AI (field paths, common fields)
  */
 async function loadSchemaContext() {
-    if (schemaContextLoaded) return schemaContext;
+    if (schemaContextLoaded && schemaContextSandbox === getSandboxName()) return schemaContext;
+    const sandbox = getSandboxName();
 
     try {
         console.log('[Agent] Loading schema context for AI...');
@@ -41,7 +47,10 @@ async function loadSchemaContext() {
             }))
         };
 
-        schemaContextLoaded = true;
+        if (sandbox !== getSandboxName()) return schemaContext; // switched while loading
+        // An empty dictionary means the fetch failed; leave it unloaded so the next chat retries.
+        schemaContextLoaded = schemaContext.totalFields > 0;
+        schemaContextSandbox = sandbox;
         console.log(`[Agent] Schema context loaded: ${schemaContext.totalFields} fields, ${schemaContext.commonFields.length} common fields`);
         return schemaContext;
     } catch (e) {
@@ -60,11 +69,15 @@ let profileSchemaContext = null;
  * Load Union Profile Schema context for PQL (loaded separately)
  */
 async function loadProfileSchemaContext() {
-    if (profileSchemaContext) return profileSchemaContext;
+    if (profileSchemaContext && profileSchemaContextSandbox === getSandboxName()) return profileSchemaContext;
+    const sandbox = getSandboxName();
 
     try {
         console.log('[Agent] Loading union profile schema for PQL...');
-        profileSchemaContext = await schemaService.getUnionProfileSchemaForPQL();
+        const loaded = await schemaService.getUnionProfileSchemaForPQL();
+        if (sandbox !== getSandboxName()) return loaded; // switched while loading
+        profileSchemaContext = loaded;
+        profileSchemaContextSandbox = sandbox;
         console.log(`[Agent] Profile schema loaded: ${profileSchemaContext?.totalFields || 0} fields, ${profileSchemaContext?.commonAttributes?.length || 0} common attributes`);
         return profileSchemaContext;
     } catch (e) {
@@ -178,6 +191,19 @@ export async function processMessage({ message, autoMode = false, history = [], 
     // Handle approved action execution
     if (approvedAction) {
         return executeApprovedAction(approvedAction);
+    }
+
+    // Sandbox changed since the schema context was loaded: drop the stale context and reload
+    // in the background (building a dictionary can take minutes, so don't block the reply).
+    const sandbox = getSandboxName();
+    if (schemaContextSandbox && schemaContextSandbox !== sandbox) {
+        schemaContext = null;
+        schemaContextLoaded = false;
+        loadSchemaContext().catch(console.error);
+    }
+    if (profileSchemaContextSandbox && profileSchemaContextSandbox !== sandbox) {
+        profileSchemaContext = null;
+        loadProfileSchemaContext().catch(console.error);
     }
 
     // Update chat history

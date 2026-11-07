@@ -13,20 +13,14 @@ import * as policyService from '../services/policy.service.js';
 import * as observabilityService from '../services/observability.service.js';
 import * as auditService from '../services/audit.service.js';
 import * as accessService from '../services/access.service.js';
-import { config, setSandboxName, getSandboxName } from '../config/config.js';
+import { config, setSandboxName, getSandboxName, getDefaultSandboxName } from '../config/config.js';
 
 const router = Router();
 
-// Middleware to handle sandbox override from frontend
+// The sandbox for each request is resolved by the sandboxScope middleware (src/middleware/security.js):
+// x-sandbox-name header or ?sandbox= query param, else the process-wide default.
 router.use((req, res, next) => {
-    // Allow frontend to specify sandbox via query param or header
-    if (req.query.sandbox) {
-        req.sandboxOverride = req.query.sandbox;
-    } else if (req.headers['x-sandbox-name']) {
-        req.sandboxOverride = req.headers['x-sandbox-name'];
-    } else {
-        req.sandboxOverride = getSandboxName();
-    }
+    req.sandboxOverride = getSandboxName();
     next();
 });
 
@@ -47,7 +41,7 @@ const asyncHandler = (fn) => (req, res) => {
 router.get('/sandbox/current', asyncHandler(async (req, res) => {
     res.json({
         sandbox: getSandboxName(),
-        default: process.env.SANDBOX_NAME,
+        default: getDefaultSandboxName(),
         name: getSandboxName()
     });
 }));
@@ -58,8 +52,10 @@ router.post('/sandbox/switch', asyncHandler(async (req, res) => {
         return res.status(400).json({ error: 'Sandbox name required' });
     }
 
-    // Actually update the config sandbox (affects all services!)
-    setSandboxName(sandbox);
+    // Changes the process-wide default; requests that send x-sandbox-name are unaffected
+    if (!setSandboxName(sandbox)) {
+        return res.status(400).json({ error: 'Invalid sandbox name' });
+    }
 
     res.json({ success: true, sandbox: getSandboxName() });
 }));
@@ -579,6 +575,16 @@ router.get('/segments', asyncHandler(async (req, res) => {
 router.get('/segments/stats', asyncHandler(async (req, res) => {
     const stats = await segmentService.getSegmentStats();
     res.json(stats);
+}));
+
+router.get('/segments/:segmentId/estimate', asyncHandler(async (req, res) => {
+    res.json(await segmentService.estimateSegment(req.params.segmentId));
+}));
+
+// Audience size for an ad-hoc PQL expression (counts only, no sample profiles)
+router.post('/segment-preview', asyncHandler(async (req, res) => {
+    const { expression, mergePolicyId } = req.body || {};
+    res.json(await segmentService.estimateExpression(expression, { mergePolicyId }));
 }));
 
 router.get('/segments/:segmentId', asyncHandler(async (req, res) => {
