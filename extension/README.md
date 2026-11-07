@@ -5,12 +5,19 @@ A side panel for Adobe Experience Platform, RTCDP and Journey Optimizer practiti
 
 | Tab | What it does |
 |-----|--------------|
+| **Page awareness** | Reads the address of the active Adobe Experience Cloud tab to find the sandbox and the object you are looking at (dataset, schema, audience, dataflow, batch, journey). The header chip and Home card jump straight to its details. Backend calls follow that sandbox (toggle in Settings). Profile and identity pages are ignored because their addresses can contain identity values. |
 | **AI Center** (home) | Sandbox vitals: health score, 24h ingestion success and failures, dataflow runs, profile/audience/schema/dataset counts, a "needs attention" list with AI explain-and-fix per failure, and an AI daily briefing. Needs the backend (`GET /api/context/vitals`: counts, states and error codes only). |
+| **Explore** | Search every dataset, schema, audience, dataflow, identity namespace and merge policy by name or id. Detail view shows state, schema, labels, recent batches/runs with error codes, audience rule and last evaluation, plus **Explain & check health** (AI). `Ctrl/⌘+K` opens a command palette from anywhere. |
+| **Tools** | **Sandbox audit** (failing datasets and dataflows, audiences edited after their last evaluation, empty audiences, orphan schemas, missing default merge policy, with fixes and an AI remediation plan) · **Field finder** ("which XDM path holds loyalty points?", local) · **SQL linter** for Query Service anti-patterns with AI rewrite · **Audience size** estimate for any PQL rule (counts only). |
 | **Journeys** | Start screen with your draft, saved journeys and templates. Build journey skeletons (entry, waits, conditions, reactions, channels, custom actions) from templates, a plain-language brief, or by hand. Live validation against AJO rules and your sandbox. Training-mode build guide, AI explanation, JSON export. |
 | **Designer** | Wizard: business goals → data sources → data dictionary → channels & governance → full implementation plan (identity strategy, XDM schemas, datasets, connectors, merge policies, audiences, destinations, journeys, monitoring) plus a step-by-step training checklist for a dev sandbox and a versionable JSON manifest. |
 | **Ask** | Chat about AEP/RTCDP/AJO grounded in your sandbox context and the Adobe page you have open. |
 | **Context** | The technical shape of a sandbox: schemas + field paths, identity namespaces, audience rules, datasets, dataflows, merge policies, journey events, custom actions, data dictionary. Sync from the backend, edit by hand, or import/export as a JSON file. |
-| **Settings** | Bring your own LLM: Anthropic Claude, any OpenAI-compatible endpoint (OpenAI, Azure OpenAI, Ollama, LM Studio) or Google Gemini. |
+| **Settings** | Bring your own LLM: Anthropic Claude, any OpenAI-compatible endpoint (OpenAI, Azure OpenAI, Ollama, LM Studio) or Google Gemini. Backend URL, API token and "follow the sandbox open in AEP". |
+
+Keyboard: `Ctrl/⌘+K` command palette · `Alt+Shift+A` open the panel (change at `chrome://extensions/shortcuts`). The toolbar icon shows an **AEP** badge on Adobe Experience Cloud tabs.
+
+> This extension replaces [aep-power-tools-ext](https://github.com/shubhambhiwapurkar/aep-power-tools-ext). Its explorer, command palette, SQL linter and auditor live here now, without putting an Adobe client secret in the browser.
 
 ## Data handling
 
@@ -31,6 +38,36 @@ npm run build          # or: npm run dev  (rebuilds on change)
 2. **Load unpacked** → pick `extension/dist`.
 3. Click the toolbar icon to open the side panel (⤢ opens it in a full tab for bigger journeys).
 4. **Settings** → choose a provider, model and key → **Save & test**.
+5. **Settings → AEP AI Center backend** → URL (and API token if the backend sets `API_TOKEN`) → **Save & test connection**.
+
+The web app's **Chrome Extension** page (`/extension`) shows connection status and generates the enterprise policy below.
+
+## Enterprise deployment
+
+IT can push settings with Chrome Enterprise policy (Google Admin console → Devices → Chrome → Apps & extensions → the extension → *Policy for extensions*, or `3rdparty\extensions\<id>\policy` via GPO / macOS profiles). Managed values override user settings and are shown read-only. Schema: [`public/managed_schema.json`](public/managed_schema.json).
+
+| Key | Type | Effect |
+|-----|------|--------|
+| `orgName`, `supportUrl` | string | Header badge and a support link in Settings |
+| `backendUrl`, `backendToken` | string | Point everyone at the organization's backend |
+| `followPageSandbox` | boolean | Follow the sandbox open in AEP |
+| `provider`, `model`, `baseUrl`, `apiKey` | string | Pre-configure the LLM (e.g. Azure OpenAI in your tenant) |
+| `allowedProviders` | string[] | Restrict LLM providers (`anthropic`, `openai`, `gemini`) |
+| `disableAi` | boolean | Turn off all LLM features; Explore, audit, linter and Context still work |
+
+Example:
+
+```json
+{
+  "orgName": { "Value": "Acme Marketing Ops" },
+  "backendUrl": { "Value": "https://aep-ai.acme.internal" },
+  "provider": { "Value": "openai" },
+  "baseUrl": { "Value": "https://acme.openai.azure.com/openai/deployments/gpt?api-version=2024-10-21" },
+  "allowedProviders": { "Value": ["openai"] }
+}
+```
+
+On the backend, set `API_TOKEN` and `ALLOWED_EXTENSION_IDS` (see the root README).
 
 ### Sandbox metadata (optional)
 
@@ -42,7 +79,8 @@ cd backend && npm install && npm start   # needs backend/.env, see the root READ
 ```
 
 It calls `GET /api/context/metadata` and `GET /api/context/schema-fields?id=…`, which return only
-names, field paths, types and rules. Without the backend you can import a context file or fill in
+names, field paths, types and rules. Explore, the audit and audience size use `/api/ext/*`
+(search, entity, audit, estimate), which are also metadata-only: names, states, counts and error codes. Without the backend you can import a context file or fill in
 events, actions and the data dictionary by hand.
 
 ## Journey → AJO canvas
@@ -62,7 +100,7 @@ building the journey in the AJO UI step by step.
 ## Development
 
 ```bash
-npm test     # journey model, validator, PII guard, CSV parsing, AJO shape tool
+npm test     # journey model, validator, PII guard, CSV parsing, AJO shape tool, URL parser, SQL linter, field finder, policy
 npm run build
 ```
 
@@ -77,3 +115,9 @@ npm run build
 | `src/lib/llm.js` | Multi-provider LLM client |
 | `src/lib/pii.js` | Redaction applied to every prompt |
 | `src/lib/context.js` | Sandbox context model, backend sync, CSV dictionary import |
+| `src/lib/aepPage.js` | Parses the active Adobe tab URL into sandbox / area / object id (privacy-safe) |
+| `src/lib/backend.js` | Backend client: token, sandbox header, actionable errors |
+| `src/lib/sqlLint.js` | Query Service SQL linter |
+| `src/lib/fieldFinder.js` | Plain-language → XDM field path ranking |
+| `src/lib/managed.js` | Chrome Enterprise managed policy |
+| `src/pages/Explore.jsx`, `src/pages/Tools.jsx` | Explore + command palette, audit / field finder / linter / audience size |

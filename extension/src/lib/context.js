@@ -4,6 +4,7 @@
  * their own machine or drive, or hand it to a teammate.
  */
 import { load, save } from './storage.js';
+import { backendFetch } from './backend.js';
 
 export const CONTEXT_VERSION = 1;
 
@@ -40,21 +41,13 @@ export async function saveContexts(state) {
     await save(KEY, state);
 }
 
-/** Pull a metadata snapshot from the local AEP AI Center backend (OAuth server-to-server). */
-export async function fetchFromBackend(backendUrl, sandbox) {
-    const base = backendUrl.replace(/\/+$/, '');
-    const headers = sandbox ? { 'x-sandbox-name': sandbox } : {};
-    const res = await fetch(`${base}/api/context/metadata`, { headers });
-    if (!res.ok) throw new Error(`Backend returned ${res.status}. Is it running at ${base}?`);
-    return res.json();
+/** Pull a metadata snapshot from the AEP AI Center backend (OAuth server-to-server). */
+export async function fetchFromBackend(settings, sandbox) {
+    return backendFetch(settings, '/api/context/metadata', { sandbox });
 }
 
-export async function fetchSchemaFields(backendUrl, schemaId, sandbox) {
-    const base = backendUrl.replace(/\/+$/, '');
-    const headers = sandbox ? { 'x-sandbox-name': sandbox } : {};
-    const res = await fetch(`${base}/api/context/schema-fields?id=${encodeURIComponent(schemaId)}`, { headers });
-    if (!res.ok) throw new Error(`Could not load fields (${res.status})`);
-    return res.json();
+export async function fetchSchemaFields(settings, schemaId, sandbox) {
+    return backendFetch(settings, `/api/context/schema-fields?id=${encodeURIComponent(schemaId)}`, { sandbox });
 }
 
 /** Merge a backend snapshot into a context, keeping manual entries and already-loaded fields. */

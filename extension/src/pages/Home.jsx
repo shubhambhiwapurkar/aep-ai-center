@@ -3,6 +3,7 @@ import Icon from '../components/Icon.jsx';
 import Markdown from '../components/Markdown.jsx';
 import { isConfigured } from '../lib/llm.js';
 import { load, save } from '../lib/storage.js';
+import { describePage } from '../lib/aepPage.js';
 import { attentionItems, briefing, computeHealth, explainFailure, fetchVitals, hourlyBuckets, isConnected } from '../lib/vitals.js';
 
 const fmt = (n) => (n === null || n === undefined ? '-' : Number(n).toLocaleString());
@@ -13,7 +14,7 @@ const ago = (ms) => {
     return m < 60 ? `${m}m ago` : m < 1440 ? `${Math.round(m / 60)}h ago` : `${Math.round(m / 1440)}d ago`;
 };
 
-export default function Home({ settings, ctx, go }) {
+export default function Home({ settings, ctx, sandbox, page, go, openEntity }) {
     const [vitals, setVitals] = useState(null);
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
@@ -24,11 +25,11 @@ export default function Home({ settings, ctx, go }) {
         setLoading(true);
         setError('');
         try {
-            const v = await fetchVitals(settings.backendUrl);
+            const v = await fetchVitals(settings, sandbox);
             setVitals(v);
             save('lastVitals', v);
         } catch (e) {
-            setError(e.message === 'Failed to fetch' ? `Can't reach the backend at ${settings.backendUrl}.` : e.message);
+            setError(e.message);
         } finally {
             setLoading(false);
         }
@@ -39,12 +40,12 @@ export default function Home({ settings, ctx, go }) {
         load('lastBriefing', null).then((b) => b && setBrief(b));
         refresh();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [settings.backendUrl]);
+    }, [settings.backendUrl, settings.backendToken, sandbox]);
 
     const connected = isConnected(vitals);
     const health = computeHealth(vitals);
     const items = attentionItems(vitals, ctx);
-    const llm = isConfigured(settings);
+    const llm = isConfigured(settings) && !settings.aiDisabled;
 
     const runBriefing = async () => {
         setBriefBusy(true);
@@ -86,6 +87,13 @@ export default function Home({ settings, ctx, go }) {
                 </div>
             )}
 
+            {page?.entity && (
+                <button className="onpage" onClick={() => openEntity(page.entity.type, page.entity.id)}>
+                    <span className="onpage-icon"><Icon name="page" size={16} /></span>
+                    <span><strong>On this page:</strong> {describePage(page)}<span className="small muted"> · see health, errors and an AI explanation</span></span>
+                </button>
+            )}
+
             {connected && <HealthCard health={health} />}
             {connected && <Kpis vitals={vitals} />}
             {connected && <IngestionChart vitals={vitals} />}
@@ -105,6 +113,8 @@ export default function Home({ settings, ctx, go }) {
 
             <div className="section-title">Tools</div>
             <div className="actions-grid">
+                <button className="action-tile" onClick={() => go('explore')}><Icon name="search" /><strong>Find anything</strong><span>Datasets, schemas, audiences, dataflows by name or id · Ctrl+K</span></button>
+                <button className="action-tile" onClick={() => go('tools')}><Icon name="tools" /><strong>Audit this sandbox</strong><span>Failing flows, stale audiences, orphan schemas, SQL linter, field finder</span></button>
                 <button className="action-tile" onClick={() => go('journey')}><Icon name="journey" /><strong>Build a journey</strong><span>Skeleton from a brief, validated, with a build guide</span></button>
                 <button className="action-tile" onClick={() => go('designer')}><Icon name="designer" /><strong>Design an implementation</strong><span>Sources + dictionary → schemas, identities, audiences</span></button>
                 <button className="action-tile" onClick={() => go('assistant')}><Icon name="chat" /><strong>Ask AEP AI</strong><span>Answers grounded in your sandbox metadata</span></button>

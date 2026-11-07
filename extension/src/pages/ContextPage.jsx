@@ -14,7 +14,7 @@ export default function ContextPage({ settings, ctx, setCtx, addCtx, removeCtx }
         setBusy('sync');
         setNotice('');
         try {
-            const snap = await fetchFromBackend(settings.backendUrl, ctx.sandbox);
+            const snap = await fetchFromBackend(settings, ctx.sandbox);
             const { ctx: merged, warnings } = mergeSnapshot(ctx, snap);
             setCtx(merged);
             setNotice(`Synced: ${merged.schemas.length} schemas, ${merged.audiences.length} audiences, ${merged.namespaces.length} namespaces, ${merged.datasets.length} datasets.${warnings.length ? ` Skipped: ${warnings.join('; ')}` : ''}`);
@@ -28,7 +28,7 @@ export default function ContextPage({ settings, ctx, setCtx, addCtx, removeCtx }
     const loadFields = async (schema) => {
         setBusy(schema.id);
         try {
-            const res = await fetchSchemaFields(settings.backendUrl, schema.altId || schema.id, ctx.sandbox);
+            const res = await fetchSchemaFields(settings, schema.altId || schema.id, ctx.sandbox);
             set({ schemas: ctx.schemas.map((s) => (s.id === schema.id ? { ...s, class: res.class, fields: res.fields } : s)) });
         } catch (e) {
             setNotice(e.message);

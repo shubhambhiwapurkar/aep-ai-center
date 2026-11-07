@@ -14,7 +14,11 @@ const PATHS = {
     back: 'M11 4 6 9l5 5',
     plus: 'M9 3v12M3 9h12',
     upload: 'M9 12V3M5.5 6.5 9 3l3.5 3.5M3 12v3h12v-3',
-    template: 'M3 3h12v4H3zM3 9h5v6H3zM10 9h5v6h-5z'
+    template: 'M3 3h12v4H3zM3 9h5v6H3zM10 9h5v6h-5z',
+    search: 'M8 3a5 5 0 1 1 0 10A5 5 0 0 1 8 3zM11.6 11.6 15.5 15.5',
+    tools: 'M11.5 2.5a3.5 3.5 0 0 0-3.3 4.6L3 12.3a1.2 1.2 0 0 0 0 1.7l1 1a1.2 1.2 0 0 0 1.7 0l5.2-5.2a3.5 3.5 0 0 0 4.6-3.3l-2 1-1.8-.5-.5-1.8z',
+    page: 'M4 2.5h7l3 3V15.5H4zM11 2.5v3h3M6.5 9h5M6.5 12h5',
+    copy: 'M6 6h9v9H6zM3 12V3h9'
 };
 
 export default function Icon({ name, size = 18, className = '' }) {

@@ -4,12 +4,10 @@
  */
 import { chat } from './llm.js';
 import { contextToPrompt } from './context.js';
+import { backendFetch } from './backend.js';
 
-export async function fetchVitals(backendUrl) {
-    const base = backendUrl.replace(/\/+$/, '');
-    const res = await fetch(`${base}/api/context/vitals`);
-    if (!res.ok) throw new Error(`Backend returned ${res.status}`);
-    return res.json();
+export async function fetchVitals(settings, sandbox) {
+    return backendFetch(settings, '/api/context/vitals', { sandbox });
 }
 
 const ok = (section) => (section?.ok ? section.data : null);

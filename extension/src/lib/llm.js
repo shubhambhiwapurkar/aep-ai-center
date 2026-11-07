@@ -16,7 +16,9 @@ export const DEFAULT_SETTINGS = {
     model: PROVIDERS.anthropic.defaultModel,
     apiKey: '',
     baseUrl: 'https://api.openai.com/v1',
-    backendUrl: 'http://localhost:3001'
+    backendUrl: 'http://localhost:3001',
+    backendToken: '',
+    followPageSandbox: true
 };
 
 export function isConfigured(settings) {

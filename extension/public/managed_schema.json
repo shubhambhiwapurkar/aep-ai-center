@@ -1,0 +1,16 @@
+{
+  "type": "object",
+  "properties": {
+    "orgName": { "title": "Organization name", "description": "Shown in the panel header and Settings so users know settings are managed.", "type": "string" },
+    "supportUrl": { "title": "Support URL", "description": "Link shown in Settings for help with AEP AI Center.", "type": "string" },
+    "backendUrl": { "title": "Backend URL", "description": "URL of your organization's AEP AI Center backend, e.g. https://aep-ai.example.internal", "type": "string" },
+    "backendToken": { "title": "Backend API token", "description": "Value of API_TOKEN configured on the backend.", "type": "string" },
+    "followPageSandbox": { "title": "Follow the sandbox open in AEP", "type": "boolean" },
+    "provider": { "title": "LLM provider", "description": "anthropic, openai (OpenAI-compatible incl. Azure OpenAI) or gemini", "type": "string", "enum": ["anthropic", "openai", "gemini"] },
+    "model": { "title": "LLM model id", "type": "string" },
+    "baseUrl": { "title": "OpenAI-compatible base URL", "description": "For Azure OpenAI or a self-hosted gateway.", "type": "string" },
+    "apiKey": { "title": "LLM API key", "description": "Optional. Leave unset to let users bring their own key.", "type": "string" },
+    "allowedProviders": { "title": "Allowed LLM providers", "type": "array", "items": { "type": "string", "enum": ["anthropic", "openai", "gemini"] } },
+    "disableAi": { "title": "Turn off AI features", "description": "Keeps Explore, audit, linting and Context; hides LLM features.", "type": "boolean" }
+  }
+}
